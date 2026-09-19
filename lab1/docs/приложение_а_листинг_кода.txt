@@ -1,0 +1,348 @@
+ПРИЛОЖЕНИЕ А
+обязательное
+
+Листинг исходного кода приложения
+
+Файл cmd/weight-calculator/main.go
+
+package main
+
+import (
+	"weight-calculator/internal/controller"
+	"weight-calculator/internal/model"
+	"weight-calculator/internal/service"
+	"weight-calculator/internal/view"
+)
+
+func main() {
+	weightModel := model.NewWeightModel()
+	calculator := service.NewCalculator(weightModel)
+	weightController := controller.NewWeightController(calculator)
+
+	view.Run(weightModel, weightController)
+}
+
+Файл internal/controller/controller.go
+
+package controller
+
+import (
+	"weight-calculator/internal/model"
+	"weight-calculator/internal/service"
+)
+
+// WeightController handles user actions and delegates business work to the service.
+type WeightController struct {
+	calculator *service.Calculator
+}
+
+func NewWeightController(calculator *service.Calculator) *WeightController {
+	return &WeightController{calculator: calculator}
+}
+
+func (c *WeightController) Calculate(rawWeight string) error {
+	return c.calculator.Calculate(rawWeight)
+}
+
+func (c *WeightController) CurrentState() model.State {
+	return c.calculator.CurrentState()
+}
+
+Файл internal/model/model.go
+
+package model
+
+// Planet describes a planet and its gravity relative to Earth's gravity.
+type Planet struct {
+	Name    string
+	Gravity float64
+}
+
+// PlanetWeight is a calculated weight for one planet.
+type PlanetWeight struct {
+	Planet Planet
+	Weight float64
+}
+
+// State is the data displayed by the view.
+type State struct {
+	HasValue     bool
+	EarthWeight  float64
+	PlanetWeight []PlanetWeight
+}
+
+// Observer receives a notification when the model changes.
+type Observer interface {
+	ModelUpdated(State)
+}
+
+// WeightModel stores the current calculator state and notifies its observers.
+// The notification is what makes this an active model in MVC.
+type WeightModel struct {
+	state     State
+	observers []Observer
+}
+
+func NewWeightModel() *WeightModel {
+	return &WeightModel{}
+}
+
+func (m *WeightModel) Subscribe(observer Observer) {
+	m.observers = append(m.observers, observer)
+}
+
+func (m *WeightModel) State() State {
+	return copyState(m.state)
+}
+
+// SetState changes the model and actively informs all subscribed views.
+func (m *WeightModel) SetState(state State) {
+	m.state = copyState(state)
+	for _, observer := range m.observers {
+		observer.ModelUpdated(copyState(m.state))
+	}
+}
+
+func copyState(state State) State {
+	state.PlanetWeight = append([]PlanetWeight(nil), state.PlanetWeight...)
+	return state
+}
+
+// Planets returns the gravity constants used by the calculator.
+func Planets() []Planet {
+	return []Planet{
+		{Name: "Меркурий", Gravity: 0.38},
+		{Name: "Венера", Gravity: 0.91},
+		{Name: "Земля", Gravity: 1.00},
+		{Name: "Марс", Gravity: 0.38},
+		{Name: "Юпитер", Gravity: 2.36},
+		{Name: "Сатурн", Gravity: 0.92},
+		{Name: "Уран", Gravity: 0.89},
+		{Name: "Нептун", Gravity: 1.12},
+	}
+}
+
+Файл internal/service/calculator.go
+
+package service
+
+import (
+	"errors"
+	"math"
+	"strconv"
+	"strings"
+	"unicode"
+
+	"weight-calculator/internal/model"
+)
+
+var (
+	errEmptyWeight        = errors.New("введите вес")
+	errNegativeWeight     = errors.New("вес не может быть отрицательным")
+	errMultipleSeparators = errors.New("в числе может быть не более одной точки или запятой")
+	errLettersInWeight    = errors.New("вес не должен содержать буквы")
+	errInvalidWeight      = errors.New("введите положительное число, например 70")
+	errNonPositiveWeight  = errors.New("вес должен быть больше нуля")
+)
+
+// Calculator contains the application's business logic.
+type Calculator struct {
+	model *model.WeightModel
+}
+
+func NewCalculator(weightModel *model.WeightModel) *Calculator {
+	return &Calculator{model: weightModel}
+}
+
+// Calculate validates the text from the input field and updates the model.
+func (c *Calculator) Calculate(rawWeight string) error {
+	value := strings.TrimSpace(rawWeight)
+	if value == "" {
+		return errEmptyWeight
+	}
+	if strings.HasPrefix(value, "-") {
+		return errNegativeWeight
+	}
+	if strings.Count(value, ".")+strings.Count(value, ",") > 1 {
+		return errMultipleSeparators
+	}
+	if strings.IndexFunc(value, unicode.IsLetter) >= 0 {
+		return errLettersInWeight
+	}
+
+	value = strings.ReplaceAll(value, ",", ".")
+	weight, err := strconv.ParseFloat(value, 64)
+	if err != nil || math.IsNaN(weight) || math.IsInf(weight, 0) {
+		return errInvalidWeight
+	}
+	if weight < 0 {
+		return errNegativeWeight
+	}
+	if weight == 0 {
+		return errNonPositiveWeight
+	}
+
+	planetWeights := make([]model.PlanetWeight, 0, len(model.Planets()))
+	for _, planet := range model.Planets() {
+		planetWeights = append(planetWeights, model.PlanetWeight{
+			Planet: planet,
+			Weight: weight * planet.Gravity,
+		})
+	}
+
+	c.model.SetState(model.State{
+		HasValue:     true,
+		EarthWeight:  weight,
+		PlanetWeight: planetWeights,
+	})
+	return nil
+}
+
+func (c *Calculator) CurrentState() model.State {
+	return c.model.State()
+}
+
+Файл internal/view/format.go
+
+package view
+
+import "strconv"
+
+func formatWeight(weight float64) string {
+	return strconv.FormatFloat(weight, 'f', 2, 64)
+}
+
+Файл internal/view/input_window.go
+
+package view
+
+import (
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/widget"
+
+	"weight-calculator/internal/controller"
+	"weight-calculator/internal/model"
+)
+
+func newInputWindow(
+	a fyne.App,
+	weightController *controller.WeightController,
+	state model.State,
+) {
+	inputWindow := a.NewWindow("Ввод веса")
+	inputWindow.Resize(fyne.NewSize(420, 190))
+
+	weightEntry := widget.NewEntry()
+	weightEntry.SetPlaceHolder("Например, 70")
+	if state.HasValue {
+		weightEntry.SetText(formatWeight(state.EarthWeight))
+	}
+
+	calculateButton := widget.NewButton("Рассчитать", func() {
+		if err := weightController.Calculate(weightEntry.Text); err != nil {
+			dialog.ShowError(err, inputWindow)
+			return
+		}
+		a.Preferences().SetFloat(lastEarthWeightKey, weightController.CurrentState().EarthWeight)
+		inputWindow.Close()
+	})
+
+	cancelButton := widget.NewButton("Отмена", inputWindow.Close)
+	inputWindow.SetContent(container.NewVBox(
+		widget.NewLabel("Введите вес человека на Земле (кг):"),
+		weightEntry,
+		container.NewHBox(calculateButton, cancelButton),
+	))
+	inputWindow.Show()
+}
+
+Файл internal/view/main_window.go
+
+package view
+
+import (
+	"fmt"
+	"math"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/widget"
+
+	"weight-calculator/internal/controller"
+	"weight-calculator/internal/model"
+)
+
+const (
+	applicationID      = "by.bsuir.weight-calculator"
+	lastEarthWeightKey = "last_earth_weight"
+)
+
+// MainWindow is the main screen and an observer of the active model.
+type MainWindow struct {
+	app        fyne.App
+	window     fyne.Window
+	controller *controller.WeightController
+
+	earthWeightLabel *widget.Label
+	results          *fyne.Container
+	state            model.State
+}
+
+func newMainWindow(weightModel *model.WeightModel, weightController *controller.WeightController) *MainWindow {
+	mainView := &MainWindow{
+		app:              app.NewWithID(applicationID),
+		controller:       weightController,
+		earthWeightLabel: widget.NewLabel("Вес на Земле: —"),
+		results:          container.NewVBox(widget.NewLabel("Сначала введите вес на Земле.")),
+	}
+	mainView.window = mainView.app.NewWindow("Калькулятор веса на планетах")
+	weightModel.Subscribe(mainView)
+	mainView.restoreLastWeight()
+
+	mainView.window.Resize(fyne.NewSize(520, 520))
+	mainView.window.SetContent(container.NewVBox(
+		widget.NewLabelWithStyle("Вариант 4", fyne.TextAlignCenter, fyne.TextStyle{Bold: true}),
+		widget.NewLabel("Калькулятор веса на планетах солнечной системы"),
+		widget.NewButton("Ввести данные", mainView.openInputWindow),
+		mainView.earthWeightLabel,
+		widget.NewSeparator(),
+		mainView.results,
+	))
+	return mainView
+}
+
+// restoreLastWeight loads the last valid value saved by Fyne preferences.
+func (v *MainWindow) restoreLastWeight() {
+	weight := v.app.Preferences().FloatWithFallback(lastEarthWeightKey, 0)
+	if weight > 0 && !math.IsNaN(weight) && !math.IsInf(weight, 0) {
+		v.state = model.State{HasValue: true, EarthWeight: weight}
+	}
+}
+
+// ModelUpdated is called by WeightModel after a successful calculation.
+func (v *MainWindow) ModelUpdated(state model.State) {
+	v.state = state
+	if !state.HasValue {
+		return
+	}
+
+	v.earthWeightLabel.SetText(fmt.Sprintf("Вес на Земле: %.2f кг", state.EarthWeight))
+	v.results.RemoveAll()
+	for _, result := range state.PlanetWeight {
+		v.results.Add(widget.NewLabel(fmt.Sprintf("%s: %.2f кг", result.Planet.Name, result.Weight)))
+	}
+	v.results.Refresh()
+}
+
+func (v *MainWindow) openInputWindow() {
+	newInputWindow(v.app, v.controller, v.state)
+}
+
+// Run creates and displays the application window.
+func Run(weightModel *model.WeightModel, weightController *controller.WeightController) {
+	mainView := newMainWindow(weightModel, weightController)
+	mainView.window.ShowAndRun()
+}

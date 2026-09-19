@@ -1,0 +1,86 @@
+@startuml
+
+top to bottom direction
+skinparam classAttributeIconSize 0
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam linetype ortho
+skinparam nodesep 20
+skinparam ranksep 35
+
+package "view" {
+  class MainWindow {
+    -app : fyne.App
+    -window : fyne.Window
+    -controller : WeightController
+    -state : State
+    +ModelUpdated(state : State)
+    -openInputWindow()
+  }
+
+  class InputWindow {
+    +Weight : string
+  }
+}
+
+package "controller" {
+  class WeightController {
+    -calculator : Calculator
+    +Calculate(rawWeight : string) : error
+    +CurrentState() : State
+  }
+}
+
+package "service" {
+  class Calculator {
+    -model : WeightModel
+    +Calculate(rawWeight : string) : error
+    +CurrentState() : State
+  }
+}
+
+package "model" {
+  class WeightModel {
+    -state : State
+    -observers : []Observer
+    +Subscribe(observer : Observer)
+    +State() : State
+    +SetState(state : State)
+  }
+
+  class State {
+    +HasValue : bool
+    +EarthWeight : float64
+    +PlanetWeight : []PlanetWeight
+  }
+
+  class PlanetWeight {
+    +Planet : Planet
+    +Weight : float64
+  }
+
+  class Planet {
+    +Name : string
+    +Gravity : float64
+  }
+}
+
+class Program {
+  +main()
+}
+
+Program -right-> MainWindow
+Program -down-> WeightController
+Program -down-> WeightModel
+
+MainWindow -right-> InputWindow
+MainWindow -down-> WeightController
+InputWindow -down-> WeightController
+WeightController -right-> Calculator
+Calculator -down-> WeightModel
+WeightModel ..up> MainWindow : ModelUpdated
+WeightModel *-right- State
+State *-right- PlanetWeight
+PlanetWeight *-right- Planet
+
+@enduml
