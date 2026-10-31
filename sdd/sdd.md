@@ -2,13 +2,13 @@
 
 Для веб-сервиса «Охотник за скидками в Steam»
 
-Версия 0.1
+Версия 0.2
 
 Подготовил Бутор К. П., гр. 450503
 
 БГУИР, кафедра ЭВМ
 
-24.10.2026
+31.10.2026
 
 ## Оглавление
 
@@ -35,7 +35,7 @@
   * [DV-010 Проверка условий и защита от повторов](#dv-010)
   * [DV-011 Состояния элемента вишлиста](#dv-011)
   * [DV-012 Параллелизм и ограничение запросов](#dv-012)
-  * [DV-013 Отправка писем](#dv-013)
+  * [DV-013 Отправка писем и сообщений Telegram](#dv-013)
   * [DV-014 Развёртывание](#dv-014)
   * [DV-015 Бюджет ресурсов](#dv-015)
 * [4. Решения](#4-decisions)
@@ -49,6 +49,7 @@
 | Name | Date | Reason For Changes | Version |
 |------|------|--------------------|---------|
 | Бутор К. П. | 24.10.2026 | Первоначальная версия на основе SRS v0.2 | 0.1 |
+| Бутор К. П. | 31.10.2026 | Обсуждение в PR #2, SRS v0.4: уведомления в Telegram (DV-002, DV-004, DV-005, DV-013, ADR-0009), отменён дайджест «раз в сутки» | 0.2 |
 
 ---
 
@@ -72,7 +73,7 @@ SDD служит руководством для реализации R1. Он �
 
 Проектируемая система — веб-сервис «Охотник за скидками в Steam», релиз R1. Сервис отслеживает цены игр из вишлиста пользователя в выбранном регионе Steam (BY, RU, KZ, US, PL), хранит историю цен, вычисляет исторический минимум и уведомляет пользователя по email и на сайте, когда выполняется заданное им условие.
 
-Дизайн охватывает всю систему R1: веб-клиент, API-сервер, фоновый обработчик, базу данных и их развёртывание. Функции, отложенные в SRS до R2 (вход через Steam, Telegram, составные условия, английский интерфейс, премиум), в дизайн не входят. Для них предусмотрены только точки расширения (DV-006, DV-013).
+Дизайн охватывает всю систему R1: веб-клиент, API-сервер, фоновый обработчик, базу данных и их развёртывание. Функции, отложенные в SRS до R2 (вход через Steam, составные условия, английский интерфейс, премиум), в дизайн не входят. Для них предусмотрены только точки расширения (DV-006, DV-013). Уведомления в Telegram перенесены из R2 в R1 по решению Заказчика (SRS v0.4, REQ-FUNC-031).
 
 ### 1.3 Определения, акронимы и сокращения {#13-definitions-acronyms-and-abbreviations}
 
@@ -191,6 +192,7 @@ flowchart TB
     WK -- "пакетные appdetails, вишлист" --> Steam
     WK -- "история цен" --> ITAD[(ITAD)]
     WK -- "письма" --> SMTP[(SMTP)]
+    WK -- "getUpdates, sendMessage" --> TG[(Telegram Bot API)]
 ```
 
 | Компонент | Ответственность | Не делает |
@@ -198,7 +200,7 @@ flowchart TB
 | Веб-клиент (SPA) | Экраны из SRS 3.1.1, валидация форм, график цены, опрос статуса ручной проверки | Не обращается к внешним API напрямую |
 | Caddy | TLS-сертификат, редирект HTTP → HTTPS, раздача собранного SPA, проксирование `/api` и `/healthz` | Не содержит бизнес-логики |
 | API-сервер | Учётные записи и сессии, вишлист, условия, выдача цен и истории, центр уведомлений, постановка заданий для обработчика | Не опрашивает цены по расписанию и не отправляет письма |
-| Фоновый обработчик | Цикл опроса цен, ручные проверки, импорт вишлиста, загрузка истории ITAD, проверка условий, формирование и отправка писем | Не принимает HTTP-запросы пользователей |
+| Фоновый обработчик | Цикл опроса цен, ручные проверки, импорт вишлиста, загрузка истории ITAD, проверка условий, формирование и отправка писем и сообщений Telegram, приём кодов привязки от бота | Не принимает HTTP-запросы пользователей |
 | PostgreSQL | Хранение всех данных, очередь заданий, взаимное исключение циклов (advisory lock) | — |
 
 Связь между API-сервером и обработчиком идёт только через базу: API записывает задание в таблицу `jobs` и посылает `NOTIFY jobs`, обработчик забирает задание. Поэтому процессы можно перезапускать независимо друг от друга, а задание не теряется (ADR-0001).
@@ -226,6 +228,7 @@ flowchart TB
 │   │   └── mock/            # тестовый источник (REQ-FUNC-030)
 │   ├── store/postgres/      # репозитории, транзакции, очередь jobs
 │   ├── mail/                # SMTP-отправитель и шаблоны писем
+│   ├── telegram/            # бот: long polling, привязка по коду, TelegramNotifier
 │   ├── httpapi/             # обработчики REST, middleware: сессия, CSRF, лимиты
 │   └── platform/            # конфигурация, журналы slog, rate limiter, часы
 ├── pkg/
@@ -250,6 +253,7 @@ flowchart LR
     app --> source
     app --> store
     app --> mail
+    app --> telegram
     source_impl[source/steam, itad, mock] --> source
     source_impl --> pkg[pkg/steamstore, steamweb, itad]
     store --> domain
@@ -298,7 +302,8 @@ erDiagram
         text region_code FK
         timestamptz email_verified_at
         bool email_enabled
-        text email_frequency "per_cycle | daily"
+        bigint telegram_chat_id UK
+        bool telegram_enabled
         text steam_profile_url
         text steam_id64
         timestamptz created_at
@@ -312,7 +317,7 @@ erDiagram
     auth_tokens {
         bigint id PK
         bigint user_id FK
-        text purpose "verify | reset | unsubscribe"
+        text purpose "verify | reset | unsubscribe | telegram_link"
         bytea token_hash
         timestamptz expires_at
         timestamptz used_at
@@ -377,6 +382,7 @@ erDiagram
     email_outbox {
         bigint id PK
         bigint user_id FK
+        text channel "email | telegram"
         text kind "verify | reset | digest"
         jsonb payload
         text status
@@ -398,7 +404,8 @@ erDiagram
 - `price_state` хранит одну строку на пару (игра, регион) с текущей ценой, временем последней проверки и кэшем исторического минимума. `price_history` пополняется **только при изменении** цены или скидки (ADR-0004).
 - Уникальный индекс `price_history (appid, region_code, recorded_at, source)` и уникальный индекс `notifications (user_id, appid, cycle_id)` не дают создать дубликаты при перезапуске цикла (REQ-REL-006).
 - Персональные данные есть только в `users`, `sessions`, `auth_tokens`, `wishlist_items`, `notifications`, `email_outbox`; у всех внешних ключей на `users` стоит `ON DELETE CASCADE` (REQ-FUNC-007, REQ-SEC-010). Таблицы цен общие и не удаляются вместе с пользователем.
-- Токены и идентификаторы сессий хранятся только в виде хэша SHA-256 (REQ-SEC-006).
+- Токены и идентификаторы сессий хранятся только в виде хэша SHA-256 (REQ-SEC-006). Одноразовый код привязки Telegram хранится в `auth_tokens` с назначением `telegram_link` и сроком 15 минут (REQ-FUNC-031).
+- `email_outbox` используется для обоих внешних каналов: поле `channel` определяет, какой `Notifier` отправит запись (DV-013, ADR-0009).
 - Очистка по расписанию: уведомления старше 90 дней, просроченные токены и сессии удаляются ежесуточно (REQ-FUNC-028).
 - Схема создаётся миграциями goose при запуске API-сервера (REQ-INST-003, ADR-0002).
 
@@ -418,7 +425,8 @@ erDiagram
 | `POST /auth/resend-verification` | Повторная отправка письма (раз в 60 с) | REQ-FUNC-002, REQ-SEC-005 |
 | `POST /auth/login`, `POST /auth/logout` | Вход и выход | REQ-FUNC-003, REQ-SEC-005 |
 | `POST /auth/password-reset`, `POST /auth/password-reset/confirm` | Сброс пароля | REQ-FUNC-004, REQ-SEC-007 |
-| `GET /me`, `PATCH /me` | Профиль: регион, настройки писем, ссылка Steam | REQ-FUNC-005, REQ-FUNC-006 |
+| `GET /me`, `PATCH /me` | Профиль: регион, каналы уведомлений (email, Telegram), ссылка Steam | REQ-FUNC-005, REQ-FUNC-006-2 |
+| `POST /me/telegram/link`, `DELETE /me/telegram` | Получить код и ссылку на бота; отвязать Telegram | REQ-FUNC-031 |
 | `DELETE /me` | Удаление учётной записи с паролем | REQ-FUNC-007 |
 | `GET /regions` | Список поддерживаемых регионов | REQ-FUNC-005 |
 | `GET /games/search?q=` | Поиск в Steam (до 20 результатов) | REQ-FUNC-008 |
@@ -480,7 +488,7 @@ type HistorySource interface {
 
 `domain.Price` содержит признак доступности (`available`, `unavailable`, `free`, `unreleased`), поэтому особые состояния игры (REQ-FUNC-016) определяются в адаптере и не протекают в бизнес-логику. Все реализации оборачиваются общим декоратором повторов (3 попытки, 1/2/4 с, учёт `Retry-After`) и ограничителем частоты (DV-012).
 
-Для R2 новые магазины добавляются новой реализацией тех же интерфейсов, а Telegram — новой реализацией интерфейса `mail.Notifier` (DV-013).
+Для R2 новые магазины добавляются новой реализацией тех же интерфейсов. Telegram в R1 подключается так же — новой реализацией интерфейса `Notifier` (DV-013).
 
 - **More Information:** REQ-MAINT-001, REQ-REUSE-001, REQ-INT-006…009, REQ-REL-001, REQ-FUNC-016, REQ-FUNC-030. Решение: ADR-0003.
 
@@ -692,22 +700,30 @@ stateDiagram-v2
 
 - **More Information:** REQ-INT-007, REQ-DIST-001, REQ-REL-001, REQ-REL-006, REQ-AVAIL-002. Решение: ADR-0006.
 
-### DV-013 Отправка писем {#dv-013}
+### DV-013 Отправка писем и сообщений Telegram {#dv-013}
 
 - **ID:** DV-013-mail
-- **Title:** Отправка писем
+- **Title:** Отправка писем и сообщений Telegram
 - **Viewpoint:** Concurrency, Interaction
 - **Representation:**
 
 - Все письма (подтверждение, сброс, дайджест) создаются записью в `email_outbox` в той же транзакции, что и вызвавшее их событие.
 - Горутина отправки в обработчике раз в 10 с выбирает до 50 писем со статусом `pending` и `next_attempt_at ≤ now()`. При ошибке SMTP увеличивает `attempts` и переносит отправку на 5 минут. После трёх неудач письмо получает статус `failed` и попадает в журнал (REQ-REL-005).
-- **Дайджест «после каждой проверки»** формируется в конце цикла: одно письмо на пользователя со всеми его уведомлениями цикла.
-- **Дайджест «раз в сутки»** формируется планировщиком в 10:00 `Europe/Minsk`: одно письмо со всеми уведомлениями за 24 часа, у которых `emailed_at IS NULL`.
-- Письма получают только пользователи с `email_verified_at IS NOT NULL` и `email_enabled = true`. Уведомления на сайте создаются в любом случае.
+- **Дайджест** формируется в конце цикла: одна запись на пользователя и канал со всеми его уведомлениями цикла. Режим «раз в сутки» отменён (SRS v0.4, REQ-FUNC-006-2).
+- Письма получают только пользователи с `email_verified_at IS NOT NULL` и `email_enabled = true`, сообщения Telegram — пользователи с `telegram_chat_id IS NOT NULL` и `telegram_enabled = true`. Уведомления на сайте создаются в любом случае.
+- **Привязка Telegram:** API создаёт код в `auth_tokens` и возвращает ссылку `t.me/<bot>?start=<код>`. Горутина бота в обработчике получает сообщения методом `getUpdates` (long polling), находит код по хэшу, записывает `telegram_chat_id` и отвечает подтверждением. Команда `/stop` обнуляет `telegram_chat_id`.
+- Отправка в Telegram идёт той же горутиной outbox через ограничитель 30 сообщений в секунду; ответ 429 переносит `next_attempt_at` на `retry_after` (REQ-INT-012). Ответ 403 (пользователь заблокировал бота) отвязывает Telegram.
 - В каждом дайджесте есть ссылка отписки с одноразовым токеном `unsubscribe` (REQ-FUNC-029).
-- Отправка скрыта за интерфейсом `Notifier`. В R1 есть реализации `SMTPNotifier` и `MailpitNotifier` (тестовый режим), в R2 добавится `TelegramNotifier`.
+- Отправка скрыта за интерфейсом `Notifier`. В R1 есть реализации `SMTPNotifier`, `MailpitNotifier` (тестовый режим) и `TelegramNotifier`:
 
-- **More Information:** REQ-FUNC-002, REQ-FUNC-006, REQ-FUNC-027, REQ-FUNC-029, REQ-INT-010, REQ-REL-005. Решение: ADR-0007.
+```go
+type Notifier interface {
+    Channel() string                                   // "email" | "telegram"
+    Send(ctx context.Context, msg domain.Message) error // ошибка с RetryAfter → повтор
+}
+```
+
+- **More Information:** REQ-FUNC-002, REQ-FUNC-006-2, REQ-FUNC-027-2, REQ-FUNC-029, REQ-FUNC-031, REQ-INT-010, REQ-INT-012, REQ-REL-005. Решения: ADR-0007, ADR-0009.
 
 ### DV-014 Развёртывание {#dv-014}
 
@@ -803,6 +819,7 @@ flowchart TB
 | [ADR-0006](../adr/0006-single-cycle-lock-and-rate-budget.md) | Один цикл через advisory lock и статический бюджет запросов к Steam | accepted | DV-007, DV-012 |
 | [ADR-0007](../adr/0007-email-outbox-and-smtp-provider.md) | Отправка писем через outbox; Gmail SMTP в эксплуатации, Mailpit в тестовом режиме | accepted | DV-013 |
 | [ADR-0008](../adr/0008-docker-compose-single-host.md) | Развёртывание Docker Compose на одном сервере за Caddy | accepted | DV-014 |
+| [ADR-0009](../adr/0009-telegram-bot-long-polling.md) | Telegram-бот на long polling, отправка через общий outbox | accepted | DV-013 |
 
 ---
 
@@ -818,7 +835,8 @@ flowchart TB
 | REQ-INT-011 (REST API) | DV-005 |
 | REQ-FUNC-001…004 (учётная запись) | DV-005, DV-008 |
 | REQ-FUNC-005 (регион) | DV-004, DV-011 |
-| REQ-FUNC-006, REQ-FUNC-027, REQ-FUNC-029 (письма) | DV-013 |
+| REQ-FUNC-006-2, REQ-FUNC-027-2, REQ-FUNC-029 (письма) | DV-013 |
+| REQ-FUNC-031, REQ-INT-012 (Telegram) | DV-004, DV-005, DV-013 |
 | REQ-FUNC-007 (удаление) | DV-004 |
 | REQ-FUNC-008…011 (поиск, добавление, импорт) | DV-005, DV-006 |
 | REQ-FUNC-012…016 (вишлист, условия) | DV-005, DV-010, DV-011 |
