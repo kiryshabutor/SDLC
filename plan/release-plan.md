@@ -11,6 +11,7 @@
 | Name | Date | Reason For Changes | Version |
 |------|------|--------------------|---------|
 | Бутор К. П. | 24.10.2026 | Бэклог функций с приоритетами и оценками по SRS v0.2 и SDD v0.1 | 0.1 |
+| Бутор К. П. | 31.10.2026 | Первый раунд обсуждения с Заказчиком: упрощения, изменение приоритетов, перенос F-11 и F-14 в R2, план v1 | 0.2 |
 
 ---
 
@@ -28,34 +29,34 @@
 | Ставка junior | 7 USD/ч |
 | Стоимость R1 при одном разработчике | 6 × 40 ч × 15 USD = **3600 USD** |
 
-Оценки даны в идеальных часах разработки и включают модульные тесты. Шкала приоритетов: **10** — без этого продукт не работает, **20** — важно для R1, **30** — нужно, но можно упростить, **40** — желательно, **50** — можно отложить.
+Оценки даны в идеальных часах разработки и включают модульные тесты. Колонка «Оценка» — исходная оценка (v0.1), «Оценка R1» — оценка после упрощений, согласованных с Заказчиком (раздел 4). Шкала приоритетов: **10** — без этого продукт не работает, **20** — важно для R1, **30** — нужно, но можно упростить, **40** — желательно, **50** — можно отложить.
 
 ## 2. Бэклог функций
 
-| ID | Feature | Priority | Оценка, ч | Зависит от | Требования SRS | SDD |
-|----|---------|:--------:|:---------:|------------|----------------|-----|
-| F-01 | Project skeleton, Docker Compose, CI, DB migrations | 10 | 16 | — | REQ-INST-001…003, REQ-BUILD-001…002, REQ-MAINT-002 | DV-003, DV-014 |
-| F-02 | User registration, login, sessions | 10 | 20 | F-01 | REQ-FUNC-001, 003, REQ-SEC-001, 003, 005, 007 | DV-005, DV-008 |
-| F-03 | Email verification, password reset, mail outbox and SMTP | 20 | 14 | F-02 | REQ-FUNC-002, 004, REQ-SEC-006, REQ-INT-010, REQ-REL-005 | DV-008, DV-013 |
-| F-04 | Region selection | 10 | 4 | F-02 | REQ-FUNC-005 | DV-011 |
-| F-05 | Game search and add by link or appid | 10 | 12 | F-02 | REQ-FUNC-008, 009, 011, REQ-INT-006 | DV-005, DV-006 |
-| F-06 | Wishlist view, sorting, filtering, removal | 10 | 14 | F-05 | REQ-FUNC-012…014, 016 | DV-005 |
-| F-07 | Notification conditions per game | 10 | 8 | F-06 | REQ-FUNC-015 | DV-010 |
-| F-08 | Price polling worker with rate limiting and price history | 10 | 28 | F-01, F-05 | REQ-FUNC-017, 018, REQ-INT-007, REQ-REL-001, 002, 006, REQ-PERF-004, REQ-POC-002 | DV-007, DV-012 |
-| F-09 | Notification engine and in-app notification center | 10 | 14 | F-07, F-08 | REQ-FUNC-025, 026, 028 | DV-010, DV-011 |
-| F-10 | Email digest after each cycle and unsubscribe link | 20 | 10 | F-03, F-09 | REQ-FUNC-027, 029 | DV-013 |
-| F-11 | Daily digest mode | 40 | 6 | F-10 | REQ-FUNC-006, 027 | DV-013 |
-| F-12 | Game page with price chart and historical low | 20 | 18 | F-08 | REQ-FUNC-021…023 | DV-005, DV-010 |
-| F-13 | Steam wishlist import | 30 | 14 | F-06, F-08 | REQ-FUNC-010, REQ-INT-008 | DV-006, DV-009 |
-| F-14 | ITAD history backfill and world sales block | 30 | 16 | F-12 | REQ-FUNC-019, 024, REQ-INT-009, REQ-REL-004, REQ-COMP-002 | DV-006 |
-| F-15 | Manual "Check prices now" | 30 | 6 | F-08 | REQ-FUNC-020 | DV-009 |
-| F-16 | Test mode with mock price source | 20 | 8 | F-08 | REQ-FUNC-030 | DV-006, DV-014 |
-| F-17 | Notification settings and account deletion | 30 | 6 | F-02 | REQ-FUNC-006, 007, REQ-COMP-001 | DV-004 |
-| F-18 | Health check, structured logs, backups | 30 | 10 | F-01 | REQ-OBS-001…004, REQ-AVAIL-002, 003 | DV-014 |
-| F-19 | UI polish: responsive layout, accessibility, empty and error states | 40 | 12 | F-06, F-12 | REQ-INT-002…005, REQ-PORT-002 | DV-003 |
-| F-20 | Security hardening and acceptance tests (ZAP, coverage, load test) | 20 | 14 | все | REQ-SEC-009, REQ-MAINT-003, REQ-PERF-001…004 | — |
-| F-21 | Localization files for UI and emails | 50 | 4 | F-01 | REQ-INT-001 | DV-003 |
-| | **Итого** | | **254** | | | |
+| ID | Feature | Priority | Оценка, ч | Оценка R1, ч | Релиз | Зависит от | Требования SRS | SDD |
+|----|---------|:--------:|:---------:|:---------:|:-----:|------------|----------------|-----|
+| F-01 | Project skeleton, Docker Compose, CI, DB migrations | 10 | 16 | 16 | R1 | — | REQ-INST-001…003, REQ-BUILD-001…002, REQ-MAINT-002 | DV-003, DV-014 |
+| F-02 | User registration, login, sessions | 10 | 20 | 20 | R1 | F-01 | REQ-FUNC-001, 003, REQ-SEC-001, 003, 005, 007 | DV-005, DV-008 |
+| F-03 | Email verification, password reset, mail outbox and SMTP | 20 | 14 | 14 | R1 | F-02 | REQ-FUNC-002, 004, REQ-SEC-006, REQ-INT-010, REQ-REL-005 | DV-008, DV-013 |
+| F-04 | Region selection | 10 | 4 | 4 | R1 | F-02 | REQ-FUNC-005 | DV-011 |
+| F-05 | Game search and add by link or appid | 10 | 12 | 12 | R1 | F-02 | REQ-FUNC-008, 009, 011, REQ-INT-006 | DV-005, DV-006 |
+| F-06 | Wishlist view, sorting, filtering, removal | 10 | 14 | 10 | R1 | F-05 | REQ-FUNC-012…014, 016 | DV-005 |
+| F-07 | Notification conditions per game | 10 | 8 | 8 | R1 | F-06 | REQ-FUNC-015 | DV-010 |
+| F-08 | Price polling worker with rate limiting and price history | 10 | 28 | 28 | R1 | F-01, F-05 | REQ-FUNC-017, 018, REQ-INT-007, REQ-REL-001, 002, 006, REQ-PERF-004, REQ-POC-002 | DV-007, DV-012 |
+| F-09 | Notification engine and in-app notification center | 10 | 14 | 14 | R1 | F-07, F-08 | REQ-FUNC-025, 026, 028 | DV-010, DV-011 |
+| F-10 | Email digest after each cycle and unsubscribe link | 20 | 10 | 10 | R1 | F-03, F-09 | REQ-FUNC-027, 029 | DV-013 |
+| F-11 | Daily digest mode | 40 | 6 | — | R2 | F-10 | REQ-FUNC-006, 027 | DV-013 |
+| F-12 | Game page with price chart and historical low | 20 | 18 | 12 | R1 | F-08 | REQ-FUNC-021…023 | DV-005, DV-010 |
+| F-13 | Steam wishlist import | 20 | 14 | 10 | R1 | F-06, F-08 | REQ-FUNC-010, REQ-INT-008 | DV-006, DV-009 |
+| F-14 | ITAD history backfill and world sales block | 30 | 16 | — | R2 | F-12 | REQ-FUNC-019, 024, REQ-INT-009, REQ-REL-004, REQ-COMP-002 | DV-006 |
+| F-15 | Manual "Check prices now" | 30 | 6 | 4 | R1 | F-08 | REQ-FUNC-020 | DV-009 |
+| F-16 | Test mode with mock price source | 20 | 8 | 8 | R1 | F-08 | REQ-FUNC-030 | DV-006, DV-014 |
+| F-17 | Notification settings and account deletion | 30 | 6 | 6 | R1 | F-02 | REQ-FUNC-006, 007, REQ-COMP-001 | DV-004 |
+| F-18 | Health check, structured logs, backups | 30 | 10 | 4 | R1 | F-01 | REQ-OBS-001…004, REQ-AVAIL-002, 003 | DV-014 |
+| F-19 | UI polish: responsive layout, accessibility, empty and error states | 40 | 12 | 6 | R1 | F-06, F-12 | REQ-INT-002…005, REQ-PORT-002 | DV-003 |
+| F-20 | Security hardening and acceptance tests (ZAP, coverage, load test) | 20 | 14 | 4 | R1 | все | REQ-SEC-009, REQ-MAINT-003, REQ-PERF-001…004 | — |
+| F-21 | Localization files for UI and emails | 50 | 4 | 2 | R1 | F-01 | REQ-INT-001 | DV-003 |
+| | **Итого** | | **254** | **192** | | | | |
 
 ## 3. Сравнение с ёмкостью
 
@@ -77,6 +78,47 @@
 | F-14 ITAD backfill | 16 ч | Клиент ITAD: поиск ID, история, минимум (6 ч), фоновая загрузка с повторами (4 ч), блок «Скидки в мире» (4 ч), атрибуция и работа без ключа (2 ч) |
 | F-13 Wishlist import | 14 ч | Разбор двух форматов ссылки и ResolveVanityURL (4 ч), получение вишлиста и лимит 500 (3 ч), фоновое задание с прогрессом (4 ч), итог «добавлено, было, пропущено» и повторный импорт (3 ч) |
 
-## 4. План по итерациям
+## 4. Первый раунд обсуждения с Заказчиком
 
-Составляется после согласования приоритетов с Заказчиком (первый раунд обсуждения в pull request).
+Заказчик не согласен сдвигать срок и спросил, почему F-08 (28 ч), F-12 + F-14 (34 ч) и F-02 (20 ч) занимают столько времени. Объяснение по составу работ — раздел 3.1. Для F-08 и F-02 сокращение без риска для надёжности и безопасности невозможно, Заказчик с этим согласился.
+
+### 4.1 Упрощения, предложенные Исполнителем (−37 ч)
+
+| Функция | Было, ч | Стало, ч | Что убираем или переносим в R2 |
+|---------|:-------:|:--------:|-------------------------------|
+| F-20 Security hardening and acceptance tests | 14 | 4 | Сканер OWASP ZAP и нагрузочный тест — в R2; покрытие логики модульными тестами остаётся |
+| F-19 UI polish | 12 | 6 | Аудит доступности WCAG (REQ-INT-005) — в R2 |
+| F-18 Health check, logs, backups | 10 | 4 | Остаются `/healthz`, журналы и простой скрипт резервного копирования |
+| F-13 Steam wishlist import | 14 | 10 | Импорт без индикатора прогресса |
+| F-06 Wishlist | 14 | 10 | Сортировка и фильтр «со скидкой»; остальные фильтры — в R2 |
+| F-12 Game page with chart | 18 | 15 | Только период «всё время», без переключателя периодов |
+| F-15 Manual check | 6 | 4 | Результат отображается после обновления страницы |
+| F-21 Localization | 4 | 2 | Только файл с русскими текстами, без переключателя языков |
+| **Итого** | **96** | **59** | **−37 ч: 254 → 217 ч** |
+
+### 4.2 Решения Заказчика
+
+| Решение | Влияние |
+|---------|---------|
+| F-13 Steam wishlist import: приоритет 30 → **20** | Импорт — первое действие пользователя с большим вишлистом |
+| F-11 Daily digest → **R2** | −6 ч |
+| F-14 ITAD history backfill → **R2** (BY — основной регион, ITAD его не поддерживает) | −16 ч и −3 ч на выделение данных ITAD в F-12 (15 → 12 ч) |
+| **Итого R1** | 217 − 25 = **192 ч**, равно ёмкости |
+
+### 4.3 План v1 (согласован Заказчиком 31.10.2026)
+
+1 разработчик (middle), 6 итераций по 32 ч.
+
+| Итерация | Функции | Часы | Результат к концу недели |
+|:--------:|---------|:----:|--------------------------|
+| 1 | F-01 Каркас, CI, миграции (16), F-05 Поиск и добавление игр (12), F-18 Health check и журналы (4) | 32 | Проект разворачивается одной командой, поиск по Steam работает |
+| 2 | F-02 Регистрация и вход (20), F-04 Выбор региона (4), F-17 Настройки и удаление аккаунта (6), F-21 Файл локализации (2) | 32 | Можно зарегистрироваться и выбрать регион |
+| 3 | F-03 Подтверждение email и сброс пароля (14), F-06 Вишлист (10), F-07 Условия уведомлений (8) | 32 | Вишлист с условиями, письма подтверждения |
+| 4 | F-08 Опрос цен (28), F-15 Ручная проверка (4) | 32 | Цены собираются по расписанию и по кнопке, копится история |
+| 5 | F-09 Уведомления на сайте (14), F-10 Письма-дайджесты (10), F-16 Тестовый режим (8) | 32 | Полный сценарий: скидка → уведомление → письмо, демонстрация в тестовом режиме |
+| 6 | F-12 Страница игры с графиком (12), F-13 Импорт вишлиста (10), F-19 Доработка интерфейса (6), F-20 Приёмочные тесты (4) | 32 | Релиз R1 |
+| **Итого** | | **192** | |
+
+Порядок итераций определяется зависимостями (колонка «Зависит от» в разделе 2): опрос цен невозможен без вишлиста, уведомления — без опроса цен, график — без накопленной истории. Импорт вишлиста (приоритет 20) стоит в 6-й итерации, потому что все функции с приоритетом 10 должны быть готовы раньше.
+
+**Стоимость плана v1:** 6 недель × 40 ч × 15 USD = **3600 USD** (не изменилась).
