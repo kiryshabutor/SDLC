@@ -1,6 +1,6 @@
 ' Общий стиль диаграмм проекта (подключается через !include)
 skinparam defaultFontName DejaVu Sans
-skinparam defaultFontSize 13
+skinparam defaultFontSize 16
 skinparam shadowing false
 skinparam backgroundColor white
 skinparam ArrowColor #333333
@@ -19,3 +19,18 @@ skinparam NoteBackgroundColor #FFFBE6
 skinparam NoteBorderColor #B8A040
 skinparam RectangleBorderColor #333333
 skinparam PackageBorderColor #333333
+' Все надписи одним кеглем 16: заглавная буква 17 px при 150 dpi;
+' при ширине рисунка 12 см диаграмма шире 820 px быть не должна.
+skinparam ArrowFontSize 16
+skinparam ActorStereotypeFontSize 16
+skinparam UsecaseStereotypeFontSize 16
+skinparam StereotypeFontSize 16
+skinparam SwimlaneTitleFontSize 16
+skinparam StateFontSize 16
+skinparam StateAttributeFontSize 16
+skinparam ParticipantFontSize 16
+skinparam SequenceGroupFontSize 16
+skinparam SequenceGroupHeaderFontSize 16
+skinparam NoteFontSize 16
+skinparam TitleFontSize 16
+skinparam RectangleFontSize 16

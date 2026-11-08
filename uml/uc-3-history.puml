@@ -1,0 +1,21 @@
+@startuml uc-3-history
+' Модель прецедентов R1, диаграмма 3 из 7: история ITAD
+' Описания актёров и прецедентов: docs/use-case-model.md
+!include _style.iuml
+top to bottom direction
+skinparam packageStyle rectangle
+
+actor "Пользо-\nватель" as User
+actor "Steam" as Steam <<система>>
+actor "ITAD" as ITAD <<система>>
+
+rectangle "Система" {
+  usecase "UC-05\nДобавить игру\nв вишлист" as UC05
+  usecase "UC-17\nЗагрузить\nисторию ITAD" as UC17
+}
+
+User --> UC05
+UC05 <.. UC17 : <<extend>>\n[регион\nUS или PL]
+UC05 --> Steam
+UC17 --> ITAD
+@enduml

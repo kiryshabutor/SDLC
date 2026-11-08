@@ -1,0 +1,22 @@
+@startuml uc-1-account
+' Модель прецедентов R1, диаграмма 1 из 7: учётная запись
+' Описания актёров и прецедентов: docs/use-case-model.md
+!include _style.iuml
+top to bottom direction
+skinparam packageStyle rectangle
+
+actor "Гость" as Guest
+actor "Почтовый\nсервер" as Mail <<система>>
+
+rectangle "Система" {
+  usecase "UC-01\nЗарегистрироваться\nи подтвердить email" as UC01
+  usecase "UC-02\nВойти" as UC02
+  usecase "UC-03\nВосстановить\nпароль" as UC03
+}
+
+Guest --> UC01
+Guest --> UC02
+UC02 <.. UC03 : <<extend>>
+UC01 ---> Mail
+UC03 --> Mail
+@enduml

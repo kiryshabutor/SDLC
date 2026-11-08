@@ -1,0 +1,25 @@
+@startuml sd-02b-delivery
+' SD-02b. Доставка дайджеста из outbox (UC-13).
+' Продолжение SD-02a.
+!include _style.iuml
+autonumber
+hide footbox
+
+participant "Отправи-\nтель" as O
+database "Postgre-\nSQL" as DB
+participant "SMTP" as M
+participant "Telegram" as TG
+actor "Пользо-\nватель" as U
+
+loop 10 с
+  O -> DB : выбрать\npending
+  alt email
+    O -> M : Send
+    M --> U : письмо
+  else telegram
+    O -> TG : Send
+    TG --> U : сообщение
+  end
+  O -> DB : статус
+end
+@enduml

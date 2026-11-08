@@ -1,0 +1,22 @@
+@startuml sd-02a-cycle
+' SD-02a. Скидка найдена в цикле опроса (UC-12, UC-13).
+' Доставка дайджеста показана в SD-02b.
+!include _style.iuml
+autonumber
+hide footbox
+
+participant "Обработ-\nчик" as T
+participant "Price-\nSource" as S
+participant "domain.\nEvaluate" as E
+database "Postgre-\nSQL" as DB
+
+T -> DB : advisory\nlock(42)
+T -> S : Prices(BY,\nпакет)
+S --> T : 2399 / 3999,\n−40 %
+T -> DB : price_state,\nprice_history
+T -> E : Evaluate
+E --> T : уведомление
+T -> DB : notifications,\nlast_notified
+T -> DB : дайджесты\nв outbox
+T -> DB : unlock(42)
+@enduml
