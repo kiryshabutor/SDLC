@@ -1,0 +1,39 @@
+@startuml activity-add-game
+' AD-02. Добавление игры в вишлист по ссылке или appid (UC-05). Реализовано в итерации 1 (F-05).
+!include _style.iuml
+
+|Пользователь|
+start
+:Ввести ссылку на игру\nили appid;
+|API-сервер|
+:Разобрать ввод\n(domain.ParseAppRef);
+switch (Проверка запроса)
+case (не распознан)
+  :400\ninvalid_app_ref;
+  stop
+case (уже в вишлисте)
+  :409\nalready_in_wishlist;
+  stop
+case (500 игр)
+  :422\nwishlist_full;
+  stop
+case (корректен)
+endswitch
+|Steam|
+:Вернуть appdetails\nв регионе пользователя;
+|API-сервер|
+if (Игра найдена?) then (нет)
+  :404 game_not_found;
+  stop
+else (да)
+endif
+:Одна транзакция: games,\nprice_state, price_history,\nwishlist_items (условие any);
+if (Регион US или PL?) then (да)
+  :Задание загрузки\nистории ITAD (UC-17);
+else (нет)
+endif
+:201 с игрой и ценой;
+|Пользователь|
+:Увидеть игру\nв вишлисте;
+stop
+@enduml

@@ -1,0 +1,38 @@
+@startuml sequence-discount-notify
+' SD-02. Скидка найдена в цикле опроса → дайджест в почту и Telegram (UC-12, UC-13).
+!include _style.iuml
+autonumber
+hide footbox
+
+participant "Планировщик\n(worker)" as T
+participant "PriceSource\n(Steam)" as S
+participant "domain.Evaluate" as E
+database "PostgreSQL" as DB
+participant "Отправитель\noutbox" as O
+participant "SMTPNotifier" as M
+participant "TelegramNotifier" as TG
+actor "Пользователь" as U
+
+T -> DB : pg_try_advisory_lock(42)
+T -> S : Prices(BY, [1245620, …])
+S --> T : 1245620: 2399 / 3999, −40 %
+T -> DB : UPDATE price_state; INSERT price_history
+T -> E : Evaluate(item, price, histLow)
+E --> T : Notification{is_hist_low}
+T -> DB : INSERT notifications;\nUPDATE last_notified_price
+T -> DB : конец цикла: INSERT email_outbox\n(channel = email), (channel = telegram)
+T -> DB : pg_advisory_unlock(42)
+
+loop каждые 10 с
+  O -> DB : SELECT … WHERE status = pending\nFOR UPDATE SKIP LOCKED
+  alt channel = email
+    O -> M : Send(digest)
+    M --> U : письмо-дайджест
+  else channel = telegram
+    O -> TG : Send(digest)
+    TG --> U : сообщение в Telegram
+  end
+  O -> DB : status = sent | attempts += 1
+end
+note over T, DB : Уведомление уже видно в центре уведомлений\n(UC-14) независимо от доставки (SS-15)
+@enduml

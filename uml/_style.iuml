@@ -1,0 +1,21 @@
+' Общий стиль диаграмм проекта (подключается через !include)
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 13
+skinparam shadowing false
+skinparam backgroundColor white
+skinparam ArrowColor #333333
+skinparam ActorBorderColor #333333
+skinparam UsecaseBorderColor #333333
+skinparam UsecaseBackgroundColor #F5F8FC
+skinparam ActivityBorderColor #333333
+skinparam ActivityBackgroundColor #F5F8FC
+skinparam ActivityDiamondBackgroundColor #FFFFFF
+skinparam StateBorderColor #333333
+skinparam StateBackgroundColor #F5F8FC
+skinparam ParticipantBorderColor #333333
+skinparam ParticipantBackgroundColor #F5F8FC
+skinparam SequenceLifeLineBorderColor #888888
+skinparam NoteBackgroundColor #FFFBE6
+skinparam NoteBorderColor #B8A040
+skinparam RectangleBorderColor #333333
+skinparam PackageBorderColor #333333

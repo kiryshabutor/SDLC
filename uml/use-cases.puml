@@ -1,0 +1,55 @@
+@startuml use-cases
+' Модель прецедентов R1, диаграмма 1 из 2: учётная запись и вишлист.
+' Описания актёров и прецедентов: docs/use-case-model.md
+!include _style.iuml
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Гость" as Guest
+actor "Пользователь" as User
+
+rectangle "Охотник за скидками в Steam" {
+  usecase "UC-01 Зарегистрироваться\nи подтвердить email" as UC01
+  usecase "UC-02 Войти" as UC02
+  usecase "UC-03 Восстановить\nпароль" as UC03
+  usecase "UC-04 Найти игру" as UC04
+  usecase "UC-05 Добавить игру\nв вишлист" as UC05
+  usecase "UC-06 Импортировать\nвишлист Steam" as UC06
+  usecase "UC-17 Загрузить историю\nцен из ITAD" as UC17
+  usecase "UC-08 Просмотреть\nвишлист" as UC08
+  usecase "UC-07 Задать условие\nуведомления" as UC07
+  usecase "UC-09 Просмотреть\nстраницу игры" as UC09
+  usecase "UC-11 Привязать\nTelegram" as UC11
+  usecase "UC-15 Изменить настройки\nили удалить аккаунт" as UC15
+}
+
+actor "Почтовый сервер" as Mail <<система>>
+actor "Telegram" as TG <<система>>
+actor "IsThereAnyDeal" as ITAD <<система>>
+actor "Steam" as Steam <<система>>
+
+Guest --> UC01
+Guest --> UC02
+UC02 <.. UC03 : <<extend>>\n(забыл пароль)
+
+User --> UC04
+User ---> UC05
+User --> UC08
+User --> UC09
+User --> UC11
+User --> UC15
+User --> UC06
+
+UC04 <.. UC05 : <<extend>>\n(выбран результат)
+UC06 ..> UC05 : <<include>>
+UC05 <.. UC17 : <<extend>>\n(регион US или PL)
+UC08 <.. UC07 : <<extend>>\n(изменить условие)
+
+UC01 ----> Mail
+UC03 ---> Mail
+UC04 ----> Steam
+UC05 ---> Steam
+UC06 ----> Steam
+UC17 --> ITAD
+UC11 ----> TG
+@enduml
