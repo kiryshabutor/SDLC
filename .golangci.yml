@@ -1,0 +1,29 @@
+version: "2"
+linters:
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - unconvert
+    - depguard
+  settings:
+    depguard:
+      rules:
+        # DV-003: domain не зависит ни от чего, кроме стандартной библиотеки.
+        domain:
+          files: ["**/internal/domain/**"]
+          allow: ["$gostd"]
+        # pkg/* переиспользуемы и не зависят от internal/* (REQ-REUSE-001).
+        pkg:
+          files: ["**/pkg/**"]
+          deny:
+            - pkg: "github.com/kiryshabutor/SDLC/internal"
+              desc: "pkg/* must not import internal/*"
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [gosec]
+formatters:
+  enable:
+    - gofmt
