@@ -1,0 +1,9 @@
+.git
+srs
+sdd
+adr
+docs
+plan
+uml
+*.md
+.env

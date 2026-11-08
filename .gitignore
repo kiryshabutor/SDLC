@@ -9,3 +9,8 @@
 *.class
 *.log
 *.tmp
+
+# Окружение и артефакты Go
+.env
+/bin/
+*.out
