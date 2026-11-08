@@ -1,5 +1,6 @@
 @startuml activity-add-game
-' AD-02. Добавление игры в вишлист по ссылке или appid (UC-05). Реализовано в итерации 1 (F-05).
+' AD-02. Добавление игры в вишлист по ссылке или appid
+' (UC-05). Реализовано в итерации 1 (F-05).
 !include _style.iuml
 
 |Пользователь|
@@ -27,7 +28,9 @@ if (Игра найдена?) then (нет)
   stop
 else (да)
 endif
-:Одна транзакция: games,\nprice_state, price_history,\nwishlist_items (условие any);
+:Одна транзакция: games,
+price_state, price_history,
+wishlist_items (условие any);
 if (Регион US или PL?) then (да)
   :Задание загрузки\nистории ITAD (UC-17);
 else (нет)
