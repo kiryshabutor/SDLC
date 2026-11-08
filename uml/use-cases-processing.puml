@@ -1,5 +1,6 @@
 @startuml use-cases-processing
-' Модель прецедентов R1, диаграмма 2 из 2: отслеживание цен и уведомления.
+' Модель прецедентов R1, диаграмма 2 из 2:
+' отслеживание цен и уведомления.
 ' Описания актёров и прецедентов: docs/use-case-model.md
 !include _style.iuml
 left to right direction
