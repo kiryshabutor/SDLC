@@ -1,6 +1,7 @@
-// Команда worker — фоновый обработчик (DV-002). В итерации 1 это каркас:
-// конфигурация, журнал, подключение к БД, таймер POLL_INTERVAL и корректное
-// завершение по SIGTERM. Цикл опроса цен добавляется в итерации 4 (F-08).
+// Команда worker — фоновый обработчик (DV-002): конфигурация, журнал,
+// подключение к БД, таймер POLL_INTERVAL, ежесуточная очистка истёкших
+// сессий (DV-004) и корректное завершение по SIGTERM. Цикл опроса цен
+// добавляется в итерации 4 (F-08).
 package main
 
 import (
@@ -38,13 +39,27 @@ func run() error {
 	defer store.Close()
 	log.Info("worker started", "poll_interval", cfg.PollInterval.String(), "test_mode", cfg.TestMode)
 
+	purge := func() {
+		n, err := store.PurgeExpired(ctx, time.Now().UTC())
+		if err != nil {
+			log.Error("purge failed", "err", err)
+			return
+		}
+		log.Info("expired sessions purged", "rows", n)
+	}
+	purge()
+
 	ticker := time.NewTicker(cfg.PollInterval)
 	defer ticker.Stop()
+	daily := time.NewTicker(24 * time.Hour)
+	defer daily.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			log.Info("worker stopped")
 			return nil
+		case <-daily.C:
+			purge()
 		case <-ticker.C:
 			cycle := platform.NewRequestID()
 			log.Info("poll cycle skipped: not implemented until F-08", "cycle_id", cycle)

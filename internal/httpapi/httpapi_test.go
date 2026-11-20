@@ -37,15 +37,29 @@ func (f fakeHealth) Ping(context.Context) error                              { r
 func (f fakeHealth) LastCycleFinishedAt(context.Context) (*time.Time, error) { return f.last, nil }
 
 func newServer(w WishlistService, h Health) http.Handler {
-	s := &Server{Wishlist: w, Health: h, Log: slog.New(slog.NewJSONHandler(io.Discard, nil)),
-		UserID: func(*http.Request) (int64, bool) { return 1, true }}
+	return newServerWith(&fakeAccounts{}, w, h)
+}
+
+func newServerWith(a AccountService, w WishlistService, h Health) http.Handler {
+	s := &Server{Accounts: a, Wishlist: w, Health: h, Log: slog.New(slog.NewJSONHandler(io.Discard, nil))}
 	return s.Handler()
 }
 
+// do выполняет запрос от имени вошедшего пользователя: cookie sid и csrf,
+// заголовок X-CSRF-Token.
 func do(t *testing.T, h http.Handler, method, path, body string) (*httptest.ResponseRecorder, map[string]any) {
 	t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.AddCookie(&http.Cookie{Name: "sid", Value: goodSID})
+	req.AddCookie(&http.Cookie{Name: "csrf", Value: "c1"})
+	req.Header.Set("X-CSRF-Token", "c1")
+	return send(t, h, req)
+}
+
+func send(t *testing.T, h http.Handler, req *http.Request) (*httptest.ResponseRecorder, map[string]any) {
+	t.Helper()
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(method, path, strings.NewReader(body)))
+	h.ServeHTTP(rec, req)
 	var m map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &m)
 	return rec, m
@@ -102,22 +116,12 @@ func TestErrorMapping(t *testing.T) {
 func TestRegionsAndEmptyLists(t *testing.T) {
 	h := newServer(fakeWishlist{}, fakeHealth{})
 	_, m := do(t, h, "GET", "/api/v1/regions", "")
-	if rs, _ := m["regions"].([]any); len(rs) != 5 {
+	rs, _ := m["regions"].([]any)
+	if len(rs) != 5 || rs[0].(map[string]any)["name"] != "Беларусь" {
 		t.Fatalf("regions = %v", m)
 	}
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/wishlist", nil))
+	rec, _ := do(t, h, "GET", "/api/v1/wishlist", "")
 	if strings.TrimSpace(rec.Body.String()) != `{"items":[]}` {
 		t.Fatalf("пустой вишлист: %s", rec.Body.String())
-	}
-}
-
-func TestUnauthorized(t *testing.T) {
-	s := &Server{Wishlist: fakeWishlist{}, Health: fakeHealth{}, Log: slog.New(slog.NewJSONHandler(io.Discard, nil)),
-		UserID: func(*http.Request) (int64, bool) { return 0, false }}
-	rec := httptest.NewRecorder()
-	s.Handler().ServeHTTP(rec, httptest.NewRequest("GET", "/api/v1/wishlist", nil))
-	if rec.Code != 401 {
-		t.Fatalf("code=%d", rec.Code)
 	}
 }

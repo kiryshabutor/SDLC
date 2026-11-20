@@ -1,0 +1,30 @@
+{
+  "error.internal": "Внутренняя ошибка сервера",
+  "error.invalid_json": "Некорректный запрос",
+  "error.unauthorized": "Войдите в систему",
+  "error.csrf": "Сессия устарела, обновите страницу",
+
+  "error.invalid_app_ref": "Укажите ссылку на страницу игры в Steam или её appid",
+  "error.query_too_short": "Введите не менее 2 символов",
+  "error.already_in_wishlist": "Игра уже в вишлисте",
+  "error.wishlist_full": "Достигнут лимит вишлиста: 500 игр",
+  "error.game_not_found": "Игра не найдена в Steam",
+  "error.steam_unavailable": "Магазин Steam временно недоступен, попробуйте позже",
+
+  "error.invalid_email": "Введите корректный email",
+  "error.weak_password": "Пароль должен содержать не менее 8 символов, в том числе букву и цифру",
+  "error.password_mismatch": "Пароли не совпадают",
+  "error.unknown_region": "Выберите регион из списка",
+  "error.consent_required": "Подтвердите согласие на обработку персональных данных",
+  "error.email_taken": "Этот email уже зарегистрирован",
+  "error.invalid_credentials": "Неверный email или пароль",
+  "error.login_locked": "Слишком много неудачных попыток входа. Повторите через 15 минут",
+  "error.wrong_password": "Неверный пароль",
+  "error.region_reset_required": "При смене региона условия «цена ниже X» будут сброшены на «любая скидка», так как валюта может измениться. Подтвердите смену региона",
+
+  "region.BY": "Беларусь",
+  "region.RU": "Россия",
+  "region.KZ": "Казахстан",
+  "region.US": "США",
+  "region.PL": "Польша"
+}

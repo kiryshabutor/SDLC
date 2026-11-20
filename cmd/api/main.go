@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/kiryshabutor/SDLC/internal/app"
-	"github.com/kiryshabutor/SDLC/internal/domain"
 	"github.com/kiryshabutor/SDLC/internal/httpapi"
+	"github.com/kiryshabutor/SDLC/internal/i18n"
 	"github.com/kiryshabutor/SDLC/internal/platform"
 	"github.com/kiryshabutor/SDLC/internal/source"
 	"github.com/kiryshabutor/SDLC/internal/source/mock"
@@ -47,12 +47,6 @@ func run() error {
 	}
 	defer store.Close()
 
-	// Временный пользователь до появления регистрации и сессий (F-02, итерация 2).
-	devUser, err := store.EnsureUser(ctx, cfg.DevUserEmail, domain.RegionBY)
-	if err != nil {
-		return err
-	}
-
 	var games source.GameSearch
 	if cfg.TestMode {
 		games = mock.New()
@@ -62,17 +56,25 @@ func run() error {
 		games = steam.New(client, platform.NewWindow(cfg.APISteamQuota, 5*time.Minute))
 	}
 
+	accounts := &app.Accounts{Store: store, Secrets: app.Secrets{
+		HashPassword:  platform.HashPassword,
+		CheckPassword: platform.CheckPassword,
+		DummyHash:     platform.DummyPasswordHash,
+		NewToken:      platform.NewToken,
+		HashToken:     platform.HashToken,
+	}}
 	srv := &httpapi.Server{
+		Accounts: accounts,
 		Wishlist: &app.Wishlist{Store: store, Search: games},
 		Health:   store,
 		Log:      log,
-		UserID:   func(*http.Request) (int64, bool) { return devUser, true },
+		Msg:      i18n.MustLoad(i18n.DefaultLang),
 	}
 	hs := &http.Server{Addr: cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 5 * time.Second}
 
 	errc := make(chan error, 1)
 	go func() { errc <- hs.ListenAndServe() }()
-	log.Info("api started", "addr", cfg.HTTPAddr, "test_mode", cfg.TestMode, "dev_user", platform.MaskEmail(cfg.DevUserEmail))
+	log.Info("api started", "addr", cfg.HTTPAddr, "test_mode", cfg.TestMode)
 
 	select {
 	case err := <-errc:

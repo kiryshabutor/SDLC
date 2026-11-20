@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/kiryshabutor/SDLC/internal/app"
 	"github.com/kiryshabutor/SDLC/internal/domain"
+	"github.com/kiryshabutor/SDLC/internal/i18n"
 	"github.com/kiryshabutor/SDLC/internal/platform"
 )
 
@@ -20,6 +22,17 @@ type WishlistService interface {
 	List(ctx context.Context, userID int64) ([]domain.WishlistItem, error)
 }
 
+// AccountService — сценарии UC-01, UC-02, UC-15 (реализация: app.Accounts).
+type AccountService interface {
+	Register(ctx context.Context, r domain.Registration) (app.Session, error)
+	Login(ctx context.Context, email, password string) (app.Session, error)
+	Logout(ctx context.Context, token string) error
+	Authenticate(ctx context.Context, token string) (int64, bool, error)
+	Profile(ctx context.Context, userID int64) (domain.Profile, error)
+	UpdateProfile(ctx context.Context, userID int64, u domain.ProfileUpdate) (domain.Profile, int, error)
+	DeleteAccount(ctx context.Context, userID int64, password string) error
+}
+
 // Health — данные для /healthz.
 type Health interface {
 	Ping(ctx context.Context) error
@@ -28,19 +41,29 @@ type Health interface {
 
 // Server собирает обработчики.
 type Server struct {
+	Accounts AccountService
 	Wishlist WishlistService
 	Health   Health
 	Log      *slog.Logger
-	// UserID определяет пользователя запроса. В итерации 1 это временная
-	// заглушка с демонстрационным пользователем; в F-02 её заменит сессия.
-	UserID func(r *http.Request) (int64, bool)
+	Msg      *i18n.Catalog
 }
 
 // Handler возвращает корневой http.Handler.
 func (s *Server) Handler() http.Handler {
+	if s.Msg == nil {
+		s.Msg = i18n.MustLoad(i18n.DefaultLang)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.healthz)
 	mux.HandleFunc("GET /api/v1/regions", s.regions)
+
+	mux.HandleFunc("POST /api/v1/auth/register", s.register)
+	mux.HandleFunc("POST /api/v1/auth/login", s.login)
+	mux.HandleFunc("POST /api/v1/auth/logout", s.auth(s.logout))
+	mux.HandleFunc("GET /api/v1/me", s.auth(s.me))
+	mux.HandleFunc("PATCH /api/v1/me", s.auth(s.updateMe))
+	mux.HandleFunc("DELETE /api/v1/me", s.auth(s.deleteMe))
+
 	mux.HandleFunc("GET /api/v1/games/search", s.auth(s.search))
 	mux.HandleFunc("GET /api/v1/wishlist", s.auth(s.listWishlist))
 	mux.HandleFunc("POST /api/v1/wishlist", s.auth(s.addToWishlist))
@@ -48,9 +71,10 @@ func (s *Server) Handler() http.Handler {
 }
 
 type apiError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Field   string `json:"field,omitempty"`
+	Code     string `json:"code"`
+	Message  string `json:"message"`
+	Field    string `json:"field,omitempty"`
+	Affected int    `json:"affected_conditions,omitempty"`
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -59,40 +83,57 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// errorMap — соответствие доменных ошибок ответам (потоки ошибок UC-04, UC-05).
+// errorMap — соответствие доменных ошибок ответам. Текст сообщения берётся
+// из файла локализации по ключу "error.<code>" (REQ-INT-001).
 var errorMap = []struct {
 	err    error
 	status int
-	body   apiError
+	code   string
+	field  string
 }{
-	{domain.ErrInvalidAppRef, http.StatusBadRequest, apiError{"invalid_app_ref", "Укажите ссылку на страницу игры в Steam или её appid", "ref"}},
-	{domain.ErrQueryTooShort, http.StatusBadRequest, apiError{"query_too_short", "Введите не менее 2 символов", "q"}},
-	{domain.ErrAlreadyInWishlist, http.StatusConflict, apiError{"already_in_wishlist", "Игра уже в вишлисте", ""}},
-	{domain.ErrWishlistFull, http.StatusUnprocessableEntity, apiError{"wishlist_full", "Достигнут лимит вишлиста: 500 игр", ""}},
-	{domain.ErrGameNotFound, http.StatusNotFound, apiError{"game_not_found", "Игра не найдена в Steam", "ref"}},
-	{domain.ErrSourceUnavailable, http.StatusServiceUnavailable, apiError{"steam_unavailable", "Магазин Steam временно недоступен, попробуйте позже", ""}},
+	{domain.ErrInvalidAppRef, http.StatusBadRequest, "invalid_app_ref", "ref"},
+	{domain.ErrQueryTooShort, http.StatusBadRequest, "query_too_short", "q"},
+	{domain.ErrAlreadyInWishlist, http.StatusConflict, "already_in_wishlist", ""},
+	{domain.ErrWishlistFull, http.StatusUnprocessableEntity, "wishlist_full", ""},
+	{domain.ErrGameNotFound, http.StatusNotFound, "game_not_found", "ref"},
+	{domain.ErrSourceUnavailable, http.StatusServiceUnavailable, "steam_unavailable", ""},
+
+	{domain.ErrInvalidEmail, http.StatusBadRequest, "invalid_email", "email"},
+	{domain.ErrWeakPassword, http.StatusBadRequest, "weak_password", "password"},
+	{domain.ErrPasswordMismatch, http.StatusBadRequest, "password_mismatch", "password_confirm"},
+	{domain.ErrUnknownRegion, http.StatusBadRequest, "unknown_region", "region"},
+	{domain.ErrConsentRequired, http.StatusBadRequest, "consent_required", "consent"},
+	{domain.ErrEmailTaken, http.StatusConflict, "email_taken", "email"},
+	{domain.ErrInvalidCredentials, http.StatusUnauthorized, "invalid_credentials", ""},
+	{domain.ErrLoginLocked, http.StatusTooManyRequests, "login_locked", ""},
+	{domain.ErrWrongPassword, http.StatusForbidden, "wrong_password", "password"},
+	{domain.ErrRegionResetRequired, http.StatusConflict, "region_reset_required", "region"},
+	{domain.ErrUserNotFound, http.StatusUnauthorized, "unauthorized", ""},
+}
+
+func (s *Server) errorBody(code, field string) map[string]apiError {
+	return map[string]apiError{"error": {Code: code, Message: s.Msg.T("error." + code), Field: field}}
 }
 
 func (s *Server) writeError(w http.ResponseWriter, r *http.Request, err error) {
 	for _, m := range errorMap {
 		if errors.Is(err, m.err) {
-			writeJSON(w, m.status, map[string]apiError{"error": m.body})
+			writeJSON(w, m.status, s.errorBody(m.code, m.field))
 			return
 		}
 	}
 	s.Log.ErrorContext(r.Context(), "request failed", "request_id", platform.RequestID(r.Context()), "err", err)
-	writeJSON(w, http.StatusInternalServerError, map[string]apiError{"error": {"internal", "Внутренняя ошибка сервера", ""}})
+	writeJSON(w, http.StatusInternalServerError, s.errorBody("internal", ""))
 }
 
-func (s *Server) auth(h func(http.ResponseWriter, *http.Request, int64)) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		uid, ok := s.UserID(r)
-		if !ok {
-			writeJSON(w, http.StatusUnauthorized, map[string]apiError{"error": {"unauthorized", "Войдите в систему", ""}})
-			return
-		}
-		h(w, r, uid)
+// decode читает JSON-тело не больше 4 КиБ.
+func (s *Server) decode(w http.ResponseWriter, r *http.Request, v any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	if err := json.NewDecoder(r.Body).Decode(v); err != nil {
+		writeJSON(w, http.StatusBadRequest, s.errorBody("invalid_json", ""))
+		return false
 	}
+	return true
 }
 
 func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +152,12 @@ func (s *Server) healthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) regions(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"regions": domain.Regions})
+	out := make([]domain.RegionInfo, len(domain.Regions))
+	for i, r := range domain.Regions {
+		r.Name = s.Msg.T("region." + string(r.Code))
+		out[i] = r
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"regions": out})
 }
 
 func (s *Server) search(w http.ResponseWriter, r *http.Request, uid int64) {
