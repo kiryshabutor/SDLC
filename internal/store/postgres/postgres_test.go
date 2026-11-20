@@ -27,7 +27,7 @@ func openTest(t *testing.T) *Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
-	if _, err := s.pool.Exec(ctx, `TRUNCATE sessions, login_failures, wishlist_items, price_history, price_state, games, users, poll_cycles RESTART IDENTITY CASCADE`); err != nil {
+	if _, err := s.pool.Exec(ctx, `TRUNCATE email_outbox, auth_tokens, sessions, login_failures, wishlist_items, price_history, price_state, games, users, poll_cycles RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 	return s
@@ -36,7 +36,7 @@ func openTest(t *testing.T) *Store {
 // newUser создаёт пользователя с фиктивным хэшем пароля.
 func newUser(t *testing.T, s *Store, email string, region domain.Region) int64 {
 	t.Helper()
-	id, err := s.CreateUser(context.Background(), email, "h", region, time.Now())
+	id, err := s.CreateUser(context.Background(), email, "h", region, time.Now(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestAddToWishlistAndHistory(t *testing.T) {
 		t.Fatalf("status: %v %d %v", exists, count, err)
 	}
 	items, err := s.Wishlist(ctx, u1)
-	if err != nil || len(items) != 1 || items[0].Price == nil || items[0].Price.Final != 5999 || items[0].Condition != domain.ConditionAny {
+	if err != nil || len(items) != 1 || items[0].Price == nil || items[0].Price.Final != 5999 || items[0].Condition.Type != domain.ConditionAny {
 		t.Fatalf("items=%+v err=%v", items, err)
 	}
 	in, _ := s.InWishlist(ctx, u1, []domain.AppID{1245620, 570})

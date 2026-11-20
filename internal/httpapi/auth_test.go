@@ -67,6 +67,34 @@ func (f *fakeAccounts) DeleteAccount(_ context.Context, _ int64, password string
 	return nil
 }
 
+func (f *fakeAccounts) ResendVerification(context.Context, int64) error { return f.err }
+func (f *fakeAccounts) VerifyEmail(_ context.Context, token string) error {
+	if token != "good-token" {
+		return domain.ErrTokenInvalid
+	}
+	return nil
+}
+func (f *fakeAccounts) RequestPasswordReset(_ context.Context, email string) error {
+	_, err := domain.NormalizeEmail(email)
+	return err
+}
+func (f *fakeAccounts) ConfirmPasswordReset(_ context.Context, token, pw, confirm string) error {
+	if err := domain.ValidatePassword(pw); err != nil {
+		return err
+	}
+	if token != "good-token" {
+		return domain.ErrTokenInvalid
+	}
+	return nil
+}
+func (f *fakeAccounts) LinkTelegram(context.Context, int64) (app.TelegramLink, error) {
+	if f.err != nil {
+		return app.TelegramLink{}, f.err
+	}
+	return app.TelegramLink{Code: "c", Link: "https://t.me/bot?start=c"}, nil
+}
+func (f *fakeAccounts) UnlinkTelegram(context.Context, int64) error { return nil }
+
 func cookie(rec *httptest.ResponseRecorder, name string) *http.Cookie {
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == name {
@@ -243,5 +271,86 @@ func TestErrorCodesLocalized(t *testing.T) {
 		if !c.Has("region." + string(r.Code)) {
 			t.Errorf("нет названия региона %s", r.Code)
 		}
+	}
+}
+
+func TestVerifyAndReset(t *testing.T) {
+	h := newServer(fakeWishlist{}, fakeHealth{})
+	rec, m := send(t, h, anon("POST", "/api/v1/auth/verify-email", `{"token":"good-token"}`))
+	if rec.Code != 200 || m["email_verified"] != true {
+		t.Fatalf("verify: %d %v", rec.Code, m)
+	}
+	rec, m = send(t, h, anon("POST", "/api/v1/auth/verify-email", `{"token":"old"}`))
+	if e, _ := m["error"].(map[string]any); rec.Code != 410 || e["code"] != "token_invalid" {
+		t.Fatalf("истёкший: %d %v", rec.Code, m)
+	}
+	// REQ-SEC-007: ответ одинаков для любого корректного адреса.
+	r1, m1 := send(t, h, anon("POST", "/api/v1/auth/password-reset", `{"email":"kirill@example.com"}`))
+	r2, m2 := send(t, h, anon("POST", "/api/v1/auth/password-reset", `{"email":"ghost@example.com"}`))
+	if r1.Code != 202 || r2.Code != 202 || m1["message"] != m2["message"] || m1["message"] == "" {
+		t.Fatalf("reset: %d %v / %d %v", r1.Code, m1, r2.Code, m2)
+	}
+	rec, _ = send(t, h, anon("POST", "/api/v1/auth/password-reset/confirm", `{"token":"good-token","password":"newpass123","password_confirm":"newpass123"}`))
+	if rec.Code != 204 {
+		t.Fatalf("confirm: %d", rec.Code)
+	}
+	rec, m = send(t, h, anon("POST", "/api/v1/auth/password-reset/confirm", `{"token":"good-token","password":"short","password_confirm":"short"}`))
+	if e, _ := m["error"].(map[string]any); rec.Code != 400 || e["field"] != "password" {
+		t.Fatalf("слабый: %d %v", rec.Code, m)
+	}
+	rec, m = do(t, newServerWith(&fakeAccounts{err: domain.ErrTooManyRequests}, fakeWishlist{}, fakeHealth{}), "POST", "/api/v1/auth/resend-verification", "")
+	if e, _ := m["error"].(map[string]any); rec.Code != 429 || e["code"] != "too_many_requests" {
+		t.Fatalf("resend: %d %v", rec.Code, m)
+	}
+	rec, _ = do(t, h, "POST", "/api/v1/auth/resend-verification", "")
+	if rec.Code != 202 {
+		t.Fatalf("resend ok: %d", rec.Code)
+	}
+}
+
+func TestTelegramEndpoints(t *testing.T) {
+	rec, m := do(t, newServer(fakeWishlist{}, fakeHealth{}), "POST", "/api/v1/me/telegram/link", "")
+	if rec.Code != 201 || m["link"] != "https://t.me/bot?start=c" {
+		t.Fatalf("link: %d %v", rec.Code, m)
+	}
+	rec, m = do(t, newServerWith(&fakeAccounts{err: domain.ErrTelegramDisabled}, fakeWishlist{}, fakeHealth{}), "POST", "/api/v1/me/telegram/link", "")
+	if e, _ := m["error"].(map[string]any); rec.Code != 503 || e["code"] != "telegram_disabled" {
+		t.Fatalf("disabled: %d %v", rec.Code, m)
+	}
+	rec, _ = do(t, newServer(fakeWishlist{}, fakeHealth{}), "DELETE", "/api/v1/me/telegram", "")
+	if rec.Code != 204 {
+		t.Fatalf("unlink: %d", rec.Code)
+	}
+}
+
+func TestWishlistItemEndpoints(t *testing.T) {
+	h := newServer(fakeWishlist{}, fakeHealth{})
+	rec, m := do(t, h, "PATCH", "/api/v1/wishlist/1245620", `{"condition":{"type":"below","value":1000}}`)
+	c, _ := m["condition"].(map[string]any)
+	if rec.Code != 200 || c["type"] != "below" || c["value"] != 1000.0 {
+		t.Fatalf("patch: %d %v", rec.Code, m)
+	}
+	rec, m = do(t, h, "PATCH", "/api/v1/wishlist/1245620", `{"condition":{"type":"min_pct","value":0}}`)
+	if e, _ := m["error"].(map[string]any); rec.Code != 400 || e["field"] != "condition.value" {
+		t.Fatalf("N=0: %d %v", rec.Code, m)
+	}
+	rec, m = do(t, h, "PATCH", "/api/v1/wishlist/1245620", `{"condition":{"type":"daily"}}`)
+	if e, _ := m["error"].(map[string]any); rec.Code != 400 || e["code"] != "invalid_condition" {
+		t.Fatalf("тип: %d %v", rec.Code, m)
+	}
+	for _, path := range []string{"/api/v1/wishlist/570", "/api/v1/wishlist/abc", "/api/v1/wishlist/-1"} {
+		if rec, _ := do(t, h, "DELETE", path, ""); rec.Code != 404 {
+			t.Errorf("%s: %d", path, rec.Code)
+		}
+	}
+	if rec, _ := do(t, h, "DELETE", "/api/v1/wishlist/1245620", ""); rec.Code != 204 {
+		t.Fatalf("delete: %d", rec.Code)
+	}
+	if rec, _ := do(t, h, "GET", "/api/v1/wishlist?sort=discount&filter=discount,hist_low", ""); rec.Code != 200 {
+		t.Fatalf("sort: %d", rec.Code)
+	}
+	rec, m = do(t, h, "GET", "/api/v1/wishlist?sort=rating", "")
+	if e, _ := m["error"].(map[string]any); rec.Code != 400 || e["code"] != "invalid_sort" {
+		t.Fatalf("bad sort: %d %v", rec.Code, m)
 	}
 }

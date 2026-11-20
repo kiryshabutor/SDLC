@@ -201,3 +201,83 @@ func (s *Server) deleteMe(w http.ResponseWriter, r *http.Request, uid int64) {
 	clearSessionCookies(w)
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// verifyEmail — POST /auth/verify-email {"token"} (REQ-FUNC-002). Истёкший
+// или использованный токен — 410 с предложением отправить письмо заново.
+func (s *Server) verifyEmail(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token string `json:"token"`
+	}
+	if !s.decode(w, r, &req) {
+		return
+	}
+	if err := s.Accounts.VerifyEmail(r.Context(), req.Token); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"email_verified": true})
+}
+
+// resendVerification — POST /auth/resend-verification: не чаще раза в 60 с
+// и 5 раз в час (REQ-FUNC-002, REQ-SEC-005).
+func (s *Server) resendVerification(w http.ResponseWriter, r *http.Request, uid int64) {
+	if err := s.Accounts.ResendVerification(r.Context(), uid); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
+// passwordReset — POST /auth/password-reset {"email"}. Ответ одинаков для
+// любого корректного адреса (REQ-SEC-007).
+func (s *Server) passwordReset(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email"`
+	}
+	if !s.decode(w, r, &req) {
+		return
+	}
+	if err := s.Accounts.RequestPasswordReset(r.Context(), req.Email); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"message": s.Msg.T("info.password_reset_sent")})
+}
+
+// passwordResetConfirm — POST /auth/password-reset/confirm (REQ-FUNC-004).
+func (s *Server) passwordResetConfirm(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token           string `json:"token"`
+		Password        string `json:"password"`
+		PasswordConfirm string `json:"password_confirm"`
+	}
+	if !s.decode(w, r, &req) {
+		return
+	}
+	if err := s.Accounts.ConfirmPasswordReset(r.Context(), req.Token, req.Password, req.PasswordConfirm); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	clearSessionCookies(w)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// telegramLink — POST /me/telegram/link: код на 15 минут и ссылка на бота
+// (REQ-FUNC-031).
+func (s *Server) telegramLink(w http.ResponseWriter, r *http.Request, uid int64) {
+	link, err := s.Accounts.LinkTelegram(r.Context(), uid)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, link)
+}
+
+// telegramUnlink — DELETE /me/telegram.
+func (s *Server) telegramUnlink(w http.ResponseWriter, r *http.Request, uid int64) {
+	if err := s.Accounts.UnlinkTelegram(r.Context(), uid); err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

@@ -7,3 +7,5 @@ plan
 uml
 *.md
 .env
+web/node_modules
+web/dist

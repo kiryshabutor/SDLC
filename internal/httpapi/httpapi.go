@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/kiryshabutor/SDLC/internal/app"
@@ -15,11 +16,13 @@ import (
 	"github.com/kiryshabutor/SDLC/internal/platform"
 )
 
-// WishlistService — сценарии UC-04, UC-05, UC-08 (реализация: app.Wishlist).
+// WishlistService — сценарии UC-04, UC-05, UC-07, UC-08 (реализация: app.Wishlist).
 type WishlistService interface {
 	Find(ctx context.Context, userID int64, query string) ([]domain.GameHit, error)
 	Add(ctx context.Context, userID int64, ref string) (domain.WishlistItem, error)
-	List(ctx context.Context, userID int64) ([]domain.WishlistItem, error)
+	List(ctx context.Context, userID int64, q domain.WishlistQuery) ([]domain.WishlistItem, error)
+	Remove(ctx context.Context, userID int64, appID domain.AppID) error
+	SetCondition(ctx context.Context, userID int64, appID domain.AppID, typ string, value int) (domain.ItemCondition, error)
 }
 
 // AccountService — сценарии UC-01, UC-02, UC-15 (реализация: app.Accounts).
@@ -31,6 +34,13 @@ type AccountService interface {
 	Profile(ctx context.Context, userID int64) (domain.Profile, error)
 	UpdateProfile(ctx context.Context, userID int64, u domain.ProfileUpdate) (domain.Profile, int, error)
 	DeleteAccount(ctx context.Context, userID int64, password string) error
+
+	ResendVerification(ctx context.Context, userID int64) error
+	VerifyEmail(ctx context.Context, token string) error
+	RequestPasswordReset(ctx context.Context, email string) error
+	ConfirmPasswordReset(ctx context.Context, token, password, confirm string) error
+	LinkTelegram(ctx context.Context, userID int64) (app.TelegramLink, error)
+	UnlinkTelegram(ctx context.Context, userID int64) error
 }
 
 // Health — данные для /healthz.
@@ -60,13 +70,21 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/auth/register", s.register)
 	mux.HandleFunc("POST /api/v1/auth/login", s.login)
 	mux.HandleFunc("POST /api/v1/auth/logout", s.auth(s.logout))
+	mux.HandleFunc("POST /api/v1/auth/verify-email", s.verifyEmail)
+	mux.HandleFunc("POST /api/v1/auth/resend-verification", s.auth(s.resendVerification))
+	mux.HandleFunc("POST /api/v1/auth/password-reset", s.passwordReset)
+	mux.HandleFunc("POST /api/v1/auth/password-reset/confirm", s.passwordResetConfirm)
 	mux.HandleFunc("GET /api/v1/me", s.auth(s.me))
 	mux.HandleFunc("PATCH /api/v1/me", s.auth(s.updateMe))
 	mux.HandleFunc("DELETE /api/v1/me", s.auth(s.deleteMe))
+	mux.HandleFunc("POST /api/v1/me/telegram/link", s.auth(s.telegramLink))
+	mux.HandleFunc("DELETE /api/v1/me/telegram", s.auth(s.telegramUnlink))
 
 	mux.HandleFunc("GET /api/v1/games/search", s.auth(s.search))
 	mux.HandleFunc("GET /api/v1/wishlist", s.auth(s.listWishlist))
 	mux.HandleFunc("POST /api/v1/wishlist", s.auth(s.addToWishlist))
+	mux.HandleFunc("PATCH /api/v1/wishlist/{appid}", s.auth(s.setCondition))
+	mux.HandleFunc("DELETE /api/v1/wishlist/{appid}", s.auth(s.removeFromWishlist))
 	return s.logRequests(mux)
 }
 
@@ -109,6 +127,15 @@ var errorMap = []struct {
 	{domain.ErrWrongPassword, http.StatusForbidden, "wrong_password", "password"},
 	{domain.ErrRegionResetRequired, http.StatusConflict, "region_reset_required", "region"},
 	{domain.ErrUserNotFound, http.StatusUnauthorized, "unauthorized", ""},
+
+	{domain.ErrTokenInvalid, http.StatusGone, "token_invalid", "token"},
+	{domain.ErrTooManyRequests, http.StatusTooManyRequests, "too_many_requests", ""},
+	{domain.ErrAlreadyVerified, http.StatusConflict, "already_verified", ""},
+	{domain.ErrTelegramDisabled, http.StatusServiceUnavailable, "telegram_disabled", ""},
+	{domain.ErrNotInWishlist, http.StatusNotFound, "not_in_wishlist", ""},
+	{domain.ErrInvalidCondition, http.StatusBadRequest, "invalid_condition", "condition.type"},
+	{domain.ErrInvalidConditionValue, http.StatusBadRequest, "invalid_condition_value", "condition.value"},
+	{domain.ErrInvalidSort, http.StatusBadRequest, "invalid_sort", "sort"},
 }
 
 func (s *Server) errorBody(code, field string) map[string]apiError {
@@ -173,7 +200,12 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request, uid int64) {
 }
 
 func (s *Server) listWishlist(w http.ResponseWriter, r *http.Request, uid int64) {
-	items, err := s.Wishlist.List(r.Context(), uid)
+	q, err := domain.ParseWishlistQuery(r.URL.Query().Get("sort"), r.URL.Query()["filter"])
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	items, err := s.Wishlist.List(r.Context(), uid, q)
 	if err != nil {
 		s.writeError(w, r, err)
 		return
@@ -199,6 +231,53 @@ func (s *Server) addToWishlist(w http.ResponseWriter, r *http.Request, uid int64
 		return
 	}
 	writeJSON(w, http.StatusCreated, item)
+}
+
+// pathAppID читает {appid} из пути; некорректное значение даёт 404.
+func pathAppID(r *http.Request) (domain.AppID, error) {
+	id, err := strconv.Atoi(r.PathValue("appid"))
+	if err != nil || id <= 0 {
+		return 0, domain.ErrNotInWishlist
+	}
+	return domain.AppID(id), nil
+}
+
+// removeFromWishlist — DELETE /wishlist/{appid} (REQ-FUNC-014).
+func (s *Server) removeFromWishlist(w http.ResponseWriter, r *http.Request, uid int64) {
+	id, err := pathAppID(r)
+	if err == nil {
+		err = s.Wishlist.Remove(r.Context(), uid, id)
+	}
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// setCondition — PATCH /wishlist/{appid} {"condition":{"type","value"}}
+// (REQ-FUNC-015). Значение для below — в минимальных единицах валюты.
+func (s *Server) setCondition(w http.ResponseWriter, r *http.Request, uid int64) {
+	id, err := pathAppID(r)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	var req struct {
+		Condition struct {
+			Type  string `json:"type"`
+			Value int    `json:"value"`
+		} `json:"condition"`
+	}
+	if !s.decode(w, r, &req) {
+		return
+	}
+	c, err := s.Wishlist.SetCondition(r.Context(), uid, id, req.Condition.Type, req.Condition.Value)
+	if err != nil {
+		s.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"appid": id, "condition": c})
 }
 
 type statusWriter struct {

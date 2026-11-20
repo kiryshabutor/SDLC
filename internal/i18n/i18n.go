@@ -61,6 +61,15 @@ func (c *Catalog) T(key string) string {
 	return key
 }
 
+// Format возвращает текст по ключу с подстановкой параметров вида {name}.
+func (c *Catalog) Format(key string, params map[string]string) string {
+	text := c.T(key)
+	for k, v := range params {
+		text = strings.ReplaceAll(text, "{"+k+"}", v)
+	}
+	return text
+}
+
 // Has сообщает, есть ли ключ в каталоге.
 func (c *Catalog) Has(key string) bool {
 	_, ok := c.messages[key]

@@ -56,19 +56,20 @@ func run() error {
 		games = steam.New(client, platform.NewWindow(cfg.APISteamQuota, 5*time.Minute))
 	}
 
+	texts := i18n.MustLoad(i18n.DefaultLang)
 	accounts := &app.Accounts{Store: store, Secrets: app.Secrets{
 		HashPassword:  platform.HashPassword,
 		CheckPassword: platform.CheckPassword,
 		DummyHash:     platform.DummyPasswordHash,
 		NewToken:      platform.NewToken,
 		HashToken:     platform.HashToken,
-	}}
+	}, Texts: texts, BaseURL: cfg.AppBaseURL, TelegramBot: cfg.TelegramBot}
 	srv := &httpapi.Server{
 		Accounts: accounts,
 		Wishlist: &app.Wishlist{Store: store, Search: games},
 		Health:   store,
 		Log:      log,
-		Msg:      i18n.MustLoad(i18n.DefaultLang),
+		Msg:      texts,
 	}
 	hs := &http.Server{Addr: cfg.HTTPAddr, Handler: srv.Handler(), ReadHeaderTimeout: 5 * time.Second}
 

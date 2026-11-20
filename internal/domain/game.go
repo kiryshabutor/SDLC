@@ -46,8 +46,7 @@ type GameHit struct {
 	InWishlist bool   `json:"in_wishlist"`
 }
 
-// Condition — условие уведомления (REQ-FUNC-015). В итерации 1 используется
-// только значение по умолчанию; проверка условий появится в F-07 и F-09.
+// Condition — тип условия уведомления (REQ-FUNC-015, condition.go).
 type Condition string
 
 // Типы условий (столбец wishlist_items.cond_type).
@@ -58,16 +57,18 @@ const (
 	ConditionHistLow Condition = "hist_low" // исторический минимум
 )
 
-// WishlistItem — элемент вишлиста вместе с текущей ценой пары. Price и
-// CheckedAt равны nil, пока пара (игра, регион) ещё не опрашивалась: так
-// бывает сразу после смены региона (REQ-FUNC-005) до ближайшего цикла.
+// WishlistItem — элемент вишлиста вместе с текущей ценой пары (REQ-FUNC-012).
+// Price и CheckedAt равны nil, пока пара (игра, регион) ещё не опрашивалась:
+// так бывает сразу после смены региона (REQ-FUNC-005) до ближайшего цикла.
 type WishlistItem struct {
 	Game
-	Region    Region     `json:"region"`
-	Condition Condition  `json:"condition"`
-	Price     *Price     `json:"price"`
-	CheckedAt *time.Time `json:"checked_at"`
-	AddedAt   time.Time  `json:"added_at"`
+	Region    Region        `json:"region"`
+	Condition ItemCondition `json:"condition"`
+	Price     *Price        `json:"price"`
+	HistLow   *int          `json:"hist_low"`
+	AtHistLow bool          `json:"at_hist_low"`
+	CheckedAt *time.Time    `json:"checked_at"`
+	AddedAt   time.Time     `json:"added_at"`
 }
 
 // MaxWishlistSize — лимит вишлиста одного пользователя (REQ-FUNC-011).

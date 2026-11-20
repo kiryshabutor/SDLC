@@ -23,7 +23,7 @@
 
 ## Состояние
 
-Выполнены итерации 1 и 2 плана v3: каркас проекта, CI, миграции, поиск и добавление игр через API, `/healthz`, журналы, резервное копирование; регистрация, вход и серверные сессии, выбор региона, настройки уведомлений, удаление учётной записи, файлы локализации. Подробности: раздел 7 плана.
+Выполнены итерации 1–3 плана v3: каркас, CI, миграции, поиск и добавление игр, `/healthz`, журналы, резервное копирование; регистрация, вход, сессии, регион, настройки, удаление учётной записи, локализация; подтверждение email, сброс пароля и отправка писем через outbox; веб-клиент с вишлистом, сортировкой, фильтрами и условиями уведомлений; привязка Telegram. Подробности: раздел 7 плана.
 
 ## Структура
 
@@ -35,7 +35,12 @@ internal/source          интерфейсы источников; steam/ и mo
 internal/store/postgres  репозитории, миграции goose
 internal/httpapi         REST API /api/v1 и /healthz
 internal/platform        конфигурация, журналы JSON, ограничитель частоты, повторы, Argon2id, токены
-internal/i18n            файлы локализации (locales/ru.json)
+internal/i18n            файлы локализации (locales/ru.json): сообщения API, письма, бот
+internal/mail            отправка писем по SMTP (STARTTLS / SMTPS)
+internal/telegram        бот: привязка по коду, /stop
+pkg/telegram             клиент Telegram Bot API (переиспользуемый)
+web/                     веб-клиент: Vue 3, Vite, Vue Router, Pinia
+deploy/Caddyfile         веб-клиент и прокси к API, HTTPS
 pkg/steamstore           клиент Steam Store API (переиспользуемый)
 migrations/              SQL-миграции
 deploy/backup.sh         резервное копирование БД
@@ -48,17 +53,19 @@ deploy/backup.sh         резервное копирование БД
 ```bash
 cp .env.example .env          # задайте POSTGRES_PASSWORD
 docker compose up -d --build
-curl http://localhost:8080/healthz
+curl http://localhost/healthz
 ```
 
-Без Steam (имитированные цены): `TEST_MODE=true` в `.env`.
+Сайт открывается по адресу http://localhost. Cookie сессии имеют атрибут `Secure`, поэтому по HTTP вход работает только через `localhost`; на сервере задайте доменное имя в `SITE_ADDRESS`, и Caddy включит HTTPS.
+
+Демонстрация без Steam и без настоящей почты: в `.env` задайте `TEST_MODE=true`, `SMTP_HOST=mailpit`, `SMTP_PORT=1025`, `SMTP_TLS=none`, `APP_BASE_URL=http://localhost` и запустите `docker compose --profile test up -d --build`. Письма появятся в Mailpit: http://localhost:8025.
 
 ### Примеры запросов
 
 API использует cookie сессии `sid` и защиту CSRF: изменяющие запросы передают заголовок `X-CSRF-Token` со значением cookie `csrf` (оно же возвращается в поле `csrf_token` при входе).
 
 ```bash
-B=http://localhost:8080/api/v1
+B=http://localhost/api/v1
 J=(-s -b jar -c jar -H 'Content-Type: application/json')
 
 curl "${J[@]}" $B/auth/register -d '{"email":"me@example.com","password":"secret123",
@@ -76,9 +83,13 @@ curl "${J[@]}" -X POST  -H "X-CSRF-Token: $CSRF" $B/auth/logout
 | Метод и путь | Назначение |
 |--------------|------------|
 | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout` | Регистрация, вход, выход |
+| `POST /auth/verify-email`, `POST /auth/resend-verification` | Подтверждение email |
+| `POST /auth/password-reset`, `POST /auth/password-reset/confirm` | Сброс пароля по ссылке из письма |
 | `GET /me`, `PATCH /me`, `DELETE /me` | Профиль; регион и каналы уведомлений; удаление с паролем |
+| `POST /me/telegram/link`, `DELETE /me/telegram` | Код привязки Telegram; отвязка |
 | `GET /regions` | Список регионов |
-| `GET /games/search?q=`, `GET /wishlist`, `POST /wishlist` | Поиск и вишлист |
+| `GET /games/search?q=`, `GET /wishlist?sort=&filter=`, `POST /wishlist` | Поиск и вишлист |
+| `PATCH /wishlist/{appid}`, `DELETE /wishlist/{appid}` | Условие уведомления; удаление игры |
 
 ## Разработка
 
@@ -86,6 +97,8 @@ curl "${J[@]}" -X POST  -H "X-CSRF-Token: $CSRF" $B/auth/logout
 go test ./...                                   # модульные тесты
 TEST_DATABASE_URL=postgres://… go test ./...    # плюс интеграционные с PostgreSQL
 golangci-lint run ./...                         # v2, конфигурация .golangci.yml
+cd web && npm ci && npm run dev                 # клиент на :5173, API проксируется на :8080
+cd web && npm run lint && npm test              # eslint и vitest
 ./uml/render.sh                                 # пересборка UML-диаграмм
 ```
 

@@ -3,10 +3,13 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/kiryshabutor/SDLC/internal/domain"
+	"github.com/kiryshabutor/SDLC/internal/i18n"
 )
 
 // memAccounts — хранилище учётных записей в памяти.
@@ -16,13 +19,24 @@ type memAccounts struct {
 	failures map[string][]time.Time // от старых к новым
 	sessions map[string]memSession
 	conds    map[int64]map[domain.Condition]int
+	tokens   map[string]*memToken
+	outbox   []domain.Message
 	nextID   int64
+}
+
+type memToken struct {
+	uid              int64
+	purpose          string
+	created, expires time.Time
+	used             bool
 }
 
 type memUser struct {
 	email, hash string
 	region      domain.Region
 	emailOn     bool
+	verified    bool
+	telegram    bool
 }
 
 type memSession struct {
@@ -32,17 +46,81 @@ type memSession struct {
 
 func newMemAccounts() *memAccounts {
 	return &memAccounts{users: map[int64]*memUser{}, byEmail: map[string]int64{}, failures: map[string][]time.Time{},
-		sessions: map[string]memSession{}, conds: map[int64]map[domain.Condition]int{}}
+		sessions: map[string]memSession{}, conds: map[int64]map[domain.Condition]int{}, tokens: map[string]*memToken{}}
 }
 
-func (m *memAccounts) CreateUser(_ context.Context, email, hash string, r domain.Region, _ time.Time) (int64, error) {
+func (m *memAccounts) CreateUser(ctx context.Context, email, hash string, r domain.Region, now time.Time, tok *domain.TokenSpec, msg *domain.Message) (int64, error) {
 	if _, ok := m.byEmail[email]; ok {
 		return 0, domain.ErrEmailTaken
 	}
 	m.nextID++
 	m.users[m.nextID] = &memUser{email: email, hash: hash, region: r, emailOn: true}
 	m.byEmail[email] = m.nextID
+	if tok != nil {
+		_ = m.IssueToken(ctx, m.nextID, *tok, msg, now)
+	}
 	return m.nextID, nil
+}
+func (m *memAccounts) IssueToken(_ context.Context, uid int64, tok domain.TokenSpec, msg *domain.Message, now time.Time) error {
+	for _, t := range m.tokens {
+		if t.uid == uid && t.purpose == tok.Purpose {
+			t.used = true
+		}
+	}
+	m.tokens[string(tok.Hash)] = &memToken{uid: uid, purpose: tok.Purpose, created: now, expires: tok.Expires}
+	if msg != nil {
+		m.outbox = append(m.outbox, *msg)
+	}
+	return nil
+}
+func (m *memAccounts) TokenStats(_ context.Context, uid int64, purpose string, since time.Time) (*time.Time, int, error) {
+	var last *time.Time
+	n := 0
+	for _, t := range m.tokens {
+		if t.uid != uid || t.purpose != purpose {
+			continue
+		}
+		if last == nil || t.created.After(*last) {
+			c := t.created
+			last = &c
+		}
+		if !t.created.Before(since) {
+			n++
+		}
+	}
+	return last, n, nil
+}
+func (m *memAccounts) use(hash []byte, purpose string, now time.Time) (int64, error) {
+	t, ok := m.tokens[string(hash)]
+	if !ok || t.used || t.purpose != purpose || !now.Before(t.expires) {
+		return 0, domain.ErrTokenInvalid
+	}
+	t.used = true
+	return t.uid, nil
+}
+func (m *memAccounts) VerifyEmail(_ context.Context, hash []byte, now time.Time) (int64, error) {
+	uid, err := m.use(hash, domain.PurposeVerify, now)
+	if err == nil {
+		m.users[uid].verified = true
+	}
+	return uid, err
+}
+func (m *memAccounts) ResetPassword(_ context.Context, hash []byte, pw string, now time.Time) (int64, error) {
+	uid, err := m.use(hash, domain.PurposeReset, now)
+	if err != nil {
+		return 0, err
+	}
+	m.users[uid].hash = pw
+	for k, s := range m.sessions {
+		if s.uid == uid {
+			delete(m.sessions, k)
+		}
+	}
+	return uid, nil
+}
+func (m *memAccounts) UnlinkTelegram(_ context.Context, uid int64) error {
+	m.users[uid].telegram = false
+	return nil
 }
 func (m *memAccounts) Credentials(_ context.Context, email string) (int64, string, error) {
 	id, ok := m.byEmail[email]
@@ -95,7 +173,7 @@ func (m *memAccounts) Profile(_ context.Context, id int64) (domain.Profile, erro
 	if !ok {
 		return domain.Profile{}, domain.ErrUserNotFound
 	}
-	return domain.Profile{ID: id, Email: u.email, Region: u.region, EmailEnabled: u.emailOn}, nil
+	return domain.Profile{ID: id, Email: u.email, Region: u.region, EmailEnabled: u.emailOn, EmailVerified: u.verified, TelegramLinked: u.telegram}, nil
 }
 func (m *memAccounts) CountConditions(_ context.Context, id int64, c domain.Condition) (int, error) {
 	return m.conds[id][c], nil
@@ -137,7 +215,7 @@ func fastSecrets() Secrets {
 		HashPassword:  func(p string) (string, error) { return "h:" + p, nil },
 		CheckPassword: func(h, p string) (bool, error) { return h == "h:"+p, nil },
 		DummyHash:     "h:\x00dummy",
-		NewToken:      func() string { n++; return "tok" + string(rune('a'+n)) },
+		NewToken:      func() string { n++; return fmt.Sprintf("tok%d", n) },
 		HashToken:     func(t string) []byte { return []byte("sha:" + t) },
 	}
 }
@@ -149,7 +227,8 @@ func (c *clock) now() time.Time { return c.t }
 func newAccounts() (*Accounts, *memAccounts, *clock) {
 	st := newMemAccounts()
 	c := &clock{time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)}
-	return &Accounts{Store: st, Secrets: fastSecrets(), Now: c.now}, st, c
+	return &Accounts{Store: st, Secrets: fastSecrets(), Now: c.now, Texts: i18n.MustLoad(i18n.DefaultLang),
+		BaseURL: "https://deals.example/"}, st, c
 }
 
 var reg = domain.Registration{Email: " Kirill@Example.com ", Password: "secret123", PasswordConfirm: "secret123", Region: "BY", Consent: true}
@@ -307,5 +386,176 @@ func TestDeleteAccount(t *testing.T) {
 	}
 	if _, err := a.Login(ctx, "kirill@example.com", "secret123"); !errors.Is(err, domain.ErrInvalidCredentials) {
 		t.Fatalf("вход после удаления: %v", err)
+	}
+}
+
+// tokenFromOutbox достаёт токен из ссылки последнего письма.
+func tokenFromOutbox(t *testing.T, st *memAccounts) string {
+	t.Helper()
+	if len(st.outbox) == 0 {
+		t.Fatal("outbox пуст")
+	}
+	body := st.outbox[len(st.outbox)-1].Body
+	i := strings.Index(body, "token=")
+	if i < 0 {
+		t.Fatalf("нет ссылки в письме: %q", body)
+	}
+	return strings.Fields(body[i+len("token="):])[0]
+}
+
+// REQ-FUNC-002: письмо при регистрации, ссылка на 24 часа, однократно.
+func TestVerifyEmail(t *testing.T) {
+	a, st, c := newAccounts()
+	ctx := context.Background()
+	s, _ := a.Register(ctx, reg)
+	if len(st.outbox) != 1 || st.outbox[0].Recipient != "kirill@example.com" || st.outbox[0].Kind != domain.KindVerify ||
+		!strings.Contains(st.outbox[0].Body, "https://deals.example/verify?token=") || st.outbox[0].Subject == "" {
+		t.Fatalf("outbox = %+v", st.outbox)
+	}
+	tok := tokenFromOutbox(t, st)
+	if err := a.VerifyEmail(ctx, "nope"); !errors.Is(err, domain.ErrTokenInvalid) {
+		t.Fatalf("чужой токен: %v", err)
+	}
+	if err := a.VerifyEmail(ctx, tok); err != nil {
+		t.Fatal(err)
+	}
+	if p, _ := a.Profile(ctx, s.Profile.ID); !p.EmailVerified {
+		t.Fatal("email не подтверждён")
+	}
+	if err := a.VerifyEmail(ctx, tok); !errors.Is(err, domain.ErrTokenInvalid) {
+		t.Fatalf("повторное использование: %v", err)
+	}
+	if err := a.ResendVerification(ctx, s.Profile.ID); !errors.Is(err, domain.ErrAlreadyVerified) {
+		t.Fatalf("после подтверждения: %v", err)
+	}
+
+	// Истечение через 24 часа.
+	reg2 := reg
+	reg2.Email = "late@example.com"
+	s2, _ := a.Register(ctx, reg2)
+	tok2 := tokenFromOutbox(t, st)
+	c.t = c.t.Add(24*time.Hour + time.Second)
+	if err := a.VerifyEmail(ctx, tok2); !errors.Is(err, domain.ErrTokenInvalid) {
+		t.Fatalf("истёкший: %v", err)
+	}
+	_ = s2
+}
+
+// REQ-FUNC-002, REQ-SEC-005: повтор не чаще раза в 60 с и 5 раз в час;
+// прежняя ссылка перестаёт действовать.
+func TestResendVerification(t *testing.T) {
+	a, st, c := newAccounts()
+	ctx := context.Background()
+	s, _ := a.Register(ctx, reg)
+	first := tokenFromOutbox(t, st)
+	if err := a.ResendVerification(ctx, s.Profile.ID); !errors.Is(err, domain.ErrTooManyRequests) {
+		t.Fatalf("сразу после регистрации: %v", err)
+	}
+	for i := 0; i < 4; i++ {
+		c.t = c.t.Add(61 * time.Second)
+		if err := a.ResendVerification(ctx, s.Profile.ID); err != nil {
+			t.Fatalf("повтор %d: %v", i+1, err)
+		}
+	}
+	c.t = c.t.Add(61 * time.Second)
+	if err := a.ResendVerification(ctx, s.Profile.ID); !errors.Is(err, domain.ErrTooManyRequests) {
+		t.Fatalf("6-е письмо за час: %v", err)
+	}
+	if len(st.outbox) != 5 {
+		t.Fatalf("писем %d", len(st.outbox))
+	}
+	if err := a.VerifyEmail(ctx, first); !errors.Is(err, domain.ErrTokenInvalid) {
+		t.Fatalf("старая ссылка должна перестать действовать: %v", err)
+	}
+	if err := a.VerifyEmail(ctx, tokenFromOutbox(t, st)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// REQ-FUNC-004, REQ-SEC-007: одинаковый ответ, однократная ссылка на час,
+// после сброса все сессии завершены, старый пароль не действует.
+func TestPasswordReset(t *testing.T) {
+	a, st, c := newAccounts()
+	ctx := context.Background()
+	s, _ := a.Register(ctx, reg)
+	before := len(st.outbox)
+	if err := a.RequestPasswordReset(ctx, "ghost@example.com"); err != nil {
+		t.Fatalf("незарегистрированный: %v", err)
+	}
+	if len(st.outbox) != before {
+		t.Fatal("письмо на незарегистрированный адрес")
+	}
+	if err := a.RequestPasswordReset(ctx, "bad"); !errors.Is(err, domain.ErrInvalidEmail) {
+		t.Fatalf("формат: %v", err)
+	}
+	if err := a.RequestPasswordReset(ctx, "KIRILL@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	msg := st.outbox[len(st.outbox)-1]
+	if msg.Kind != domain.KindReset || !strings.Contains(msg.Body, "/reset-password?token=") {
+		t.Fatalf("письмо: %+v", msg)
+	}
+	tok := tokenFromOutbox(t, st)
+	if err := a.ConfirmPasswordReset(ctx, tok, "short", "short"); !errors.Is(err, domain.ErrWeakPassword) {
+		t.Fatalf("слабый: %v", err)
+	}
+	if err := a.ConfirmPasswordReset(ctx, tok, "newpass123", "newpass124"); !errors.Is(err, domain.ErrPasswordMismatch) {
+		t.Fatalf("несовпадение: %v", err)
+	}
+	if err := a.ConfirmPasswordReset(ctx, tok, "newpass123", "newpass123"); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := a.Authenticate(ctx, s.Token); ok {
+		t.Fatal("сессии должны завершиться")
+	}
+	if _, err := a.Login(ctx, "kirill@example.com", "secret123"); !errors.Is(err, domain.ErrInvalidCredentials) {
+		t.Fatal("старый пароль действует")
+	}
+	if _, err := a.Login(ctx, "kirill@example.com", "newpass123"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.ConfirmPasswordReset(ctx, tok, "other123", "other123"); !errors.Is(err, domain.ErrTokenInvalid) {
+		t.Fatalf("повторное использование: %v", err)
+	}
+	// Ссылка действует 1 час.
+	_ = a.RequestPasswordReset(ctx, "kirill@example.com")
+	tok = tokenFromOutbox(t, st)
+	c.t = c.t.Add(time.Hour + time.Second)
+	if err := a.ConfirmPasswordReset(ctx, tok, "other123", "other123"); !errors.Is(err, domain.ErrTokenInvalid) {
+		t.Fatalf("истёкшая: %v", err)
+	}
+	// Лимит 5 писем в час: шестой запрос молча не отправляет письмо.
+	for i := 0; i < 6; i++ {
+		_ = a.RequestPasswordReset(ctx, "kirill@example.com")
+	}
+	n := 0
+	for _, m := range st.outbox {
+		if m.Kind == domain.KindReset {
+			n++
+		}
+	}
+	if n != 2+5 { // два письма из первого часа и пять в текущем
+		t.Fatalf("писем сброса: %d", n)
+	}
+}
+
+func TestLinkTelegram(t *testing.T) {
+	a, st, _ := newAccounts()
+	ctx := context.Background()
+	s, _ := a.Register(ctx, reg)
+	if _, err := a.LinkTelegram(ctx, s.Profile.ID); !errors.Is(err, domain.ErrTelegramDisabled) {
+		t.Fatalf("без бота: %v", err)
+	}
+	a.TelegramBot = "deal_hunter_bot"
+	l, err := a.LinkTelegram(ctx, s.Profile.ID)
+	if err != nil || l.Link != "https://t.me/deal_hunter_bot?start="+l.Code || !l.ExpiresAt.Equal(a.now().Add(15*time.Minute)) {
+		t.Fatalf("%+v %v", l, err)
+	}
+	if tk := st.tokens["sha:"+l.Code]; tk == nil || tk.purpose != domain.PurposeTelegramLink {
+		t.Fatal("код не сохранён")
+	}
+	st.users[s.Profile.ID].telegram = true
+	if err := a.UnlinkTelegram(ctx, s.Profile.ID); err != nil || st.users[s.Profile.ID].telegram {
+		t.Fatal("отвязка")
 	}
 }

@@ -35,9 +35,25 @@ func (m *memStore) InWishlist(_ context.Context, _ int64, ids []domain.AppID) (m
 	return out, nil
 }
 func (m *memStore) AddToWishlist(_ context.Context, _ int64, r domain.Region, g domain.Game, p domain.Price, now time.Time) (domain.WishlistItem, error) {
-	it := domain.WishlistItem{Game: g, Region: r, Condition: domain.ConditionAny, Price: &p, AddedAt: now, CheckedAt: &now}
+	it := domain.WishlistItem{Game: g, Region: r, Condition: domain.ItemCondition{Type: domain.ConditionAny}, Price: &p, AddedAt: now, CheckedAt: &now}
 	m.items[g.AppID] = it
 	return it, nil
+}
+func (m *memStore) RemoveFromWishlist(_ context.Context, _ int64, id domain.AppID) error {
+	if _, ok := m.items[id]; !ok {
+		return domain.ErrNotInWishlist
+	}
+	delete(m.items, id)
+	return nil
+}
+func (m *memStore) SetCondition(_ context.Context, _ int64, id domain.AppID, c domain.ItemCondition) error {
+	it, ok := m.items[id]
+	if !ok {
+		return domain.ErrNotInWishlist
+	}
+	it.Condition = c
+	m.items[id] = it
+	return nil
 }
 func (m *memStore) Wishlist(context.Context, int64) ([]domain.WishlistItem, error) {
 	var out []domain.WishlistItem
@@ -64,7 +80,7 @@ func TestAddByLinkAndAppID(t *testing.T) {
 	ctx := context.Background()
 
 	it, err := w.Add(ctx, 1, "https://store.steampowered.com/app/1245620/ELDEN_RING/")
-	if err != nil || it.AppID != 1245620 || it.Condition != domain.ConditionAny || it.Price.Final != 5999 {
+	if err != nil || it.AppID != 1245620 || it.Condition.Type != domain.ConditionAny || it.Price.Final != 5999 {
 		t.Fatalf("item=%+v err=%v", it, err)
 	}
 	if _, err := w.Add(ctx, 1, "292030"); err != nil {
@@ -117,5 +133,34 @@ func TestFind(t *testing.T) {
 	hits, err := w.Find(ctx, 1, "elden")
 	if err != nil || len(hits) != 1 || !hits[0].InWishlist {
 		t.Fatalf("hits=%+v err=%v", hits, err)
+	}
+}
+
+func TestRemoveAndCondition(t *testing.T) {
+	st := newMem()
+	w := &Wishlist{Store: st, Search: mock.New()}
+	ctx := context.Background()
+	if _, err := w.Add(ctx, 1, "1245620"); err != nil {
+		t.Fatal(err)
+	}
+	c, err := w.SetCondition(ctx, 1, 1245620, "min_pct", 30)
+	if err != nil || c != (domain.ItemCondition{Type: domain.ConditionMinPct, Value: 30}) || st.items[1245620].Condition != c {
+		t.Fatalf("%+v %v", c, err)
+	}
+	if _, err := w.SetCondition(ctx, 1, 1245620, "min_pct", 100); !errors.Is(err, domain.ErrInvalidConditionValue) {
+		t.Fatalf("N=100: %v", err)
+	}
+	if _, err := w.SetCondition(ctx, 1, 570, "any", 0); !errors.Is(err, domain.ErrNotInWishlist) {
+		t.Fatalf("чужая игра: %v", err)
+	}
+	items, err := w.List(ctx, 1, domain.WishlistQuery{Sort: "name"})
+	if err != nil || len(items) != 1 {
+		t.Fatalf("list: %v %v", items, err)
+	}
+	if err := w.Remove(ctx, 1, 1245620); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Remove(ctx, 1, 1245620); !errors.Is(err, domain.ErrNotInWishlist) {
+		t.Fatalf("повторное удаление: %v", err)
 	}
 }

@@ -1,7 +1,7 @@
-// Команда worker — фоновый обработчик (DV-002): конфигурация, журнал,
-// подключение к БД, таймер POLL_INTERVAL, ежесуточная очистка истёкших
-// сессий (DV-004) и корректное завершение по SIGTERM. Цикл опроса цен
-// добавляется в итерации 4 (F-08).
+// Команда worker — фоновый обработчик (DV-002): отправка писем из outbox
+// (DV-013), бот Telegram (привязка по коду), ежесуточная очистка истёкших
+// сессий (DV-004), таймер POLL_INTERVAL и корректное завершение по SIGTERM.
+// Цикл опроса цен добавляется в итерации 4 (F-08).
 package main
 
 import (
@@ -12,8 +12,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kiryshabutor/SDLC/internal/app"
+	"github.com/kiryshabutor/SDLC/internal/i18n"
+	"github.com/kiryshabutor/SDLC/internal/mail"
 	"github.com/kiryshabutor/SDLC/internal/platform"
 	"github.com/kiryshabutor/SDLC/internal/store/postgres"
+	"github.com/kiryshabutor/SDLC/internal/telegram"
+	tgapi "github.com/kiryshabutor/SDLC/pkg/telegram"
 )
 
 func main() {
@@ -38,6 +43,30 @@ func run() error {
 	}
 	defer store.Close()
 	log.Info("worker started", "poll_interval", cfg.PollInterval.String(), "test_mode", cfg.TestMode)
+	texts := i18n.MustLoad(i18n.DefaultLang)
+
+	// Письма (F-03). Без SMTP письма остаются в очереди до настройки сервера.
+	if cfg.SMTPHost == "" {
+		log.Warn("SMTP_HOST is empty: emails stay in outbox until SMTP is configured")
+	} else {
+		mc := mail.Config{Host: cfg.SMTPHost, Port: cfg.SMTPPort, User: cfg.SMTPUser, Password: cfg.SMTPPassword,
+			From: cfg.SMTPFrom, TLS: cfg.SMTPTLS}
+		if err := mc.Validate(); err != nil {
+			return err
+		}
+		ob := &app.Outbox{Store: store, Notifier: &mail.SMTP{Cfg: mc}, Log: log.With("part", "outbox")}
+		go ob.Run(ctx)
+		log.Info("email outbox started", "smtp_host", cfg.SMTPHost, "smtp_tls", cfg.SMTPTLS)
+	}
+
+	// Бот Telegram (F-22): привязка по коду и /stop. Без токена выключен.
+	if cfg.TelegramToken != "" {
+		client := tgapi.New(cfg.TelegramToken)
+		client.BaseURL = cfg.TelegramAPIURL
+		bot := &telegram.Bot{API: client, Store: store, HashToken: platform.HashToken, Texts: texts, Log: log.With("part", "telegram")}
+		go bot.Run(ctx)
+		log.Info("telegram bot started", "bot", cfg.TelegramBot)
+	}
 
 	purge := func() {
 		n, err := store.PurgeExpired(ctx, time.Now().UTC())

@@ -20,10 +20,13 @@ type WishlistStore interface {
 	InWishlist(ctx context.Context, userID int64, appIDs []domain.AppID) (map[domain.AppID]bool, error)
 	AddToWishlist(ctx context.Context, userID int64, region domain.Region, g domain.Game, p domain.Price, now time.Time) (domain.WishlistItem, error)
 	Wishlist(ctx context.Context, userID int64) ([]domain.WishlistItem, error)
+	RemoveFromWishlist(ctx context.Context, userID int64, appID domain.AppID) error
+	SetCondition(ctx context.Context, userID int64, appID domain.AppID, c domain.ItemCondition) error
 }
 
-// Wishlist реализует UC-04 «Найти игру» и UC-05 «Добавить игру в вишлист»
-// (диаграммы AD-02, SD-01).
+// Wishlist реализует UC-04 «Найти игру», UC-05 «Добавить игру в вишлист»
+// (диаграммы AD-02, SD-01), UC-07 «Задать условие уведомления» и UC-08
+// «Просмотреть вишлист».
 type Wishlist struct {
 	Store  WishlistStore
 	Search source.GameSearch
@@ -94,9 +97,28 @@ func (w *Wishlist) Add(ctx context.Context, userID int64, ref string) (domain.Wi
 	return w.Store.AddToWishlist(ctx, userID, region, game, price, w.now())
 }
 
-// List возвращает вишлист пользователя.
-func (w *Wishlist) List(ctx context.Context, userID int64) ([]domain.WishlistItem, error) {
-	return w.Store.Wishlist(ctx, userID)
+// List возвращает вишлист пользователя с сортировкой и фильтрами
+// (REQ-FUNC-012, REQ-FUNC-013).
+func (w *Wishlist) List(ctx context.Context, userID int64, q domain.WishlistQuery) ([]domain.WishlistItem, error) {
+	items, err := w.Store.Wishlist(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return q.Apply(items), nil
+}
+
+// Remove удаляет игру из вишлиста (REQ-FUNC-014).
+func (w *Wishlist) Remove(ctx context.Context, userID int64, appID domain.AppID) error {
+	return w.Store.RemoveFromWishlist(ctx, userID, appID)
+}
+
+// SetCondition проверяет и сохраняет условие уведомления (REQ-FUNC-015).
+func (w *Wishlist) SetCondition(ctx context.Context, userID int64, appID domain.AppID, typ string, value int) (domain.ItemCondition, error) {
+	c, err := domain.ParseCondition(typ, value)
+	if err != nil {
+		return domain.ItemCondition{}, err
+	}
+	return c, w.Store.SetCondition(ctx, userID, appID, c)
 }
 
 func (w *Wishlist) now() time.Time {

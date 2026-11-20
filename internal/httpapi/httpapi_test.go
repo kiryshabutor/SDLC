@@ -20,12 +20,26 @@ type fakeWishlist struct{ err error }
 func (f fakeWishlist) Find(context.Context, int64, string) ([]domain.GameHit, error) {
 	return nil, f.err
 }
-func (f fakeWishlist) List(context.Context, int64) ([]domain.WishlistItem, error) { return nil, f.err }
+func (f fakeWishlist) List(_ context.Context, _ int64, q domain.WishlistQuery) ([]domain.WishlistItem, error) {
+	return nil, f.err
+}
+func (f fakeWishlist) Remove(_ context.Context, _ int64, id domain.AppID) error {
+	if id != 1245620 {
+		return domain.ErrNotInWishlist
+	}
+	return f.err
+}
+func (f fakeWishlist) SetCondition(_ context.Context, _ int64, id domain.AppID, typ string, value int) (domain.ItemCondition, error) {
+	if f.err != nil {
+		return domain.ItemCondition{}, f.err
+	}
+	return domain.ParseCondition(typ, value)
+}
 func (f fakeWishlist) Add(_ context.Context, _ int64, ref string) (domain.WishlistItem, error) {
 	if f.err != nil {
 		return domain.WishlistItem{}, f.err
 	}
-	return domain.WishlistItem{Game: domain.Game{AppID: 1245620, Name: "ELDEN RING"}, Condition: domain.ConditionAny}, nil
+	return domain.WishlistItem{Game: domain.Game{AppID: 1245620, Name: "ELDEN RING"}, Condition: domain.ItemCondition{Type: domain.ConditionAny}}, nil
 }
 
 type fakeHealth struct {
@@ -79,7 +93,7 @@ func TestHealthz(t *testing.T) {
 
 func TestAddToWishlist(t *testing.T) {
 	rec, m := do(t, newServer(fakeWishlist{}, fakeHealth{}), "POST", "/api/v1/wishlist", `{"ref":"1245620"}`)
-	if rec.Code != 201 || m["name"] != "ELDEN RING" || m["condition"] != "any" {
+	if rec.Code != 201 || m["name"] != "ELDEN RING" || m["condition"].(map[string]any)["type"] != "any" {
 		t.Fatalf("code=%d body=%v", rec.Code, m)
 	}
 	if rec.Header().Get("X-Request-ID") == "" {

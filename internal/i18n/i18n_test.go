@@ -32,3 +32,11 @@ func TestTextsAreRussian(t *testing.T) {
 		}
 	}
 }
+
+func TestFormat(t *testing.T) {
+	c := MustLoad(DefaultLang)
+	body := c.Format("mail.verify.body", map[string]string{"link": "https://example.com/verify?token=abc"})
+	if !regexp.MustCompile(`https://example\.com/verify\?token=abc`).MatchString(body) || regexp.MustCompile(`\{link\}`).MatchString(body) {
+		t.Fatalf("body = %q", body)
+	}
+}

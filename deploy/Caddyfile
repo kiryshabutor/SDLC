@@ -1,0 +1,33 @@
+# Caddy (DV-014): веб-клиент и обратный прокси к API на одном адресе.
+# SITE_ADDRESS=:80 — локальная демонстрация по HTTP; доменное имя
+# (например deals.example.by) включает автоматический HTTPS Let's Encrypt
+# и перенаправление HTTP → HTTPS (REQ-SEC-002).
+{
+	admin off
+}
+
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+	handle /healthz {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		root * /srv
+		header /assets/* Cache-Control "public, max-age=31536000, immutable"
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Frame-Options DENY
+		Content-Security-Policy "default-src 'self'; img-src 'self' https://*.steamstatic.com https://*.akamaihd.net data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'"
+		-Server
+	}
+}
