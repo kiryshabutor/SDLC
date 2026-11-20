@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -77,5 +78,42 @@ func TestRetry(t *testing.T) {
 	err = Retry(context.Background(), 3, time.Millisecond, func() error { calls++; return perm })
 	if !errors.Is(err, perm) || calls != 1 {
 		t.Fatalf("постоянная ошибка не повторяется: err=%v calls=%d", err, calls)
+	}
+}
+
+// REQ-SEC-001: Argon2id с уникальной солью в формате PHC.
+func TestPasswordHash(t *testing.T) {
+	h1, err := HashPassword("secret123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h2, _ := HashPassword("secret123")
+	if !strings.HasPrefix(h1, "$argon2id$v=19$m=19456,t=2,p=1$") || h1 == h2 {
+		t.Fatalf("хэш %q, соль должна быть уникальной", h1)
+	}
+	if ok, err := CheckPassword(h1, "secret123"); !ok || err != nil {
+		t.Fatalf("верный пароль: %v %v", ok, err)
+	}
+	if ok, _ := CheckPassword(h1, "secret124"); ok {
+		t.Fatal("неверный пароль принят")
+	}
+	if ok, _ := CheckPassword(DummyPasswordHash, ""); ok {
+		t.Fatal("пустой пароль совпал с фиктивным хэшем")
+	}
+	for _, bad := range []string{"", "plain", "$2a$12$bcrypt", "$argon2id$v=19$m=1,t=1,p=1$!!$!!", "$argon2id$v=18$m=1,t=1,p=1$YQ$YQ"} {
+		if _, err := CheckPassword(bad, "x"); err == nil {
+			t.Errorf("%q: ожидалась ошибка формата", bad)
+		}
+	}
+}
+
+// REQ-SEC-006: токен из 256 бит, в БД только SHA-256.
+func TestTokens(t *testing.T) {
+	a, b := NewToken(), NewToken()
+	if len(a) != 43 || a == b {
+		t.Fatalf("token %q", a)
+	}
+	if h := HashToken(a); len(h) != 32 || string(h) == a || !bytes.Equal(h, HashToken(a)) {
+		t.Fatal("HashToken")
 	}
 }

@@ -60,18 +60,6 @@ func Migrate(ctx context.Context, url string) error {
 
 var _ = stdlib.GetDefaultDriver // регистрирует драйвер "pgx" для database/sql
 
-// EnsureUser возвращает id пользователя с email, создавая его при отсутствии.
-// В итерации 1 используется для временного демонстрационного пользователя,
-// пока регистрация и сессии (F-02) не реализованы.
-func (s *Store) EnsureUser(ctx context.Context, email string, region domain.Region) (int64, error) {
-	var id int64
-	err := s.pool.QueryRow(ctx, `
-		INSERT INTO users (email, region_code) VALUES ($1, $2)
-		ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
-		RETURNING id`, email, string(region)).Scan(&id)
-	return id, err
-}
-
 // UserRegion возвращает регион пользователя.
 func (s *Store) UserRegion(ctx context.Context, userID int64) (domain.Region, error) {
 	var r string
@@ -111,7 +99,7 @@ func (s *Store) InWishlist(ctx context.Context, userID int64, appIDs []domain.Ap
 // AddToWishlist в одной транзакции сохраняет игру, текущую цену пары,
 // точку истории (если цена новая или изменилась, ADR-0004) и элемент вишлиста.
 func (s *Store) AddToWishlist(ctx context.Context, userID int64, region domain.Region, g domain.Game, p domain.Price, now time.Time) (domain.WishlistItem, error) {
-	item := domain.WishlistItem{Game: g, Region: region, Condition: domain.ConditionAny, Price: p, CheckedAt: now, AddedAt: now}
+	item := domain.WishlistItem{Game: g, Region: region, Condition: domain.ConditionAny, Price: &p, CheckedAt: &now, AddedAt: now}
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO games (appid, name, cover_url) VALUES ($1, $2, $3)
@@ -191,11 +179,12 @@ func nullStr(s string) any {
 }
 
 // Wishlist возвращает вишлист пользователя с ценами в его регионе, новые сверху.
+// Если пара ещё не опрашивалась в текущем регионе, цена равна nil.
 func (s *Store) Wishlist(ctx context.Context, userID int64) ([]domain.WishlistItem, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT g.appid, g.name, g.cover_url, u.region_code, w.cond_type, w.added_at,
-		       coalesce(ps.availability, 'unavailable'), coalesce(ps.final_price, 0), coalesce(ps.initial_price, 0),
-		       coalesce(ps.discount_pct, 0), coalesce(ps.currency, ''), coalesce(ps.checked_at, w.added_at)
+		       ps.availability, coalesce(ps.final_price, 0), coalesce(ps.initial_price, 0),
+		       coalesce(ps.discount_pct, 0), coalesce(ps.currency, ''), ps.checked_at
 		FROM wishlist_items w
 		JOIN users u ON u.id = w.user_id
 		JOIN games g ON g.appid = w.appid
@@ -209,13 +198,19 @@ func (s *Store) Wishlist(ctx context.Context, userID int64) ([]domain.WishlistIt
 	var out []domain.WishlistItem
 	for rows.Next() {
 		var it domain.WishlistItem
+		var p domain.Price
 		var app int
-		var region, cond, avail string
+		var region, cond string
+		var avail *string
 		if err := rows.Scan(&app, &it.Name, &it.CoverURL, &region, &cond, &it.AddedAt, &avail,
-			&it.Price.Final, &it.Price.Initial, &it.Price.DiscountPct, &it.Price.Currency, &it.CheckedAt); err != nil {
+			&p.Final, &p.Initial, &p.DiscountPct, &p.Currency, &it.CheckedAt); err != nil {
 			return nil, err
 		}
-		it.AppID, it.Region, it.Condition, it.Price.Availability = domain.AppID(app), domain.Region(region), domain.Condition(cond), domain.Availability(avail)
+		it.AppID, it.Region, it.Condition = domain.AppID(app), domain.Region(region), domain.Condition(cond)
+		if avail != nil {
+			p.Availability = domain.Availability(*avail)
+			it.Price = &p
+		}
 		out = append(out, it)
 	}
 	return out, rows.Err()

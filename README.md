@@ -23,18 +23,19 @@
 
 ## Состояние
 
-Выполнена итерация 1 плана v3 (02.11–08.11.2026): каркас проекта, CI, миграции, поиск и добавление игр через API, `/healthz`, журналы, резервное копирование. Подробности: раздел 7 плана.
+Выполнены итерации 1 и 2 плана v3: каркас проекта, CI, миграции, поиск и добавление игр через API, `/healthz`, журналы, резервное копирование; регистрация, вход и серверные сессии, выбор региона, настройки уведомлений, удаление учётной записи, файлы локализации. Подробности: раздел 7 плана.
 
 ## Структура
 
 ```text
 cmd/api, cmd/worker      точки входа API-сервера и фонового обработчика
 internal/domain          сущности и чистые правила (без ввода-вывода)
-internal/app             сценарии использования (UC-04, UC-05, UC-08)
+internal/app             сценарии использования (UC-01, UC-02, UC-04, UC-05, UC-08, UC-15)
 internal/source          интерфейсы источников; steam/ и mock/ — реализации
 internal/store/postgres  репозитории, миграции goose
 internal/httpapi         REST API /api/v1 и /healthz
-internal/platform        конфигурация, журналы JSON, ограничитель частоты, повторы
+internal/platform        конфигурация, журналы JSON, ограничитель частоты, повторы, Argon2id, токены
+internal/i18n            файлы локализации (locales/ru.json)
 pkg/steamstore           клиент Steam Store API (переиспользуемый)
 migrations/              SQL-миграции
 deploy/backup.sh         резервное копирование БД
@@ -54,14 +55,30 @@ curl http://localhost:8080/healthz
 
 ### Примеры запросов
 
+API использует cookie сессии `sid` и защиту CSRF: изменяющие запросы передают заголовок `X-CSRF-Token` со значением cookie `csrf` (оно же возвращается в поле `csrf_token` при входе).
+
 ```bash
-curl "http://localhost:8080/api/v1/games/search?q=elden%20ring"
-curl -X POST http://localhost:8080/api/v1/wishlist \
+B=http://localhost:8080/api/v1
+J=(-s -b jar -c jar -H 'Content-Type: application/json')
+
+curl "${J[@]}" $B/auth/register -d '{"email":"me@example.com","password":"secret123",
+     "password_confirm":"secret123","region":"BY","consent":true}'
+CSRF=$(awk '$6=="csrf"{print $7}' jar)
+
+curl "${J[@]}" "$B/games/search?q=elden%20ring"
+curl "${J[@]}" -H "X-CSRF-Token: $CSRF" $B/wishlist \
      -d '{"ref":"https://store.steampowered.com/app/1245620/ELDEN_RING/"}'
-curl http://localhost:8080/api/v1/wishlist
+curl "${J[@]}" $B/wishlist
+curl "${J[@]}" -X PATCH -H "X-CSRF-Token: $CSRF" $B/me -d '{"region":"PL","confirm_region_reset":true}'
+curl "${J[@]}" -X POST  -H "X-CSRF-Token: $CSRF" $B/auth/logout
 ```
 
-До итерации 2 (регистрация и сессии) запросы выполняются от имени демонстрационного пользователя `DEV_USER_EMAIL`.
+| Метод и путь | Назначение |
+|--------------|------------|
+| `POST /auth/register`, `POST /auth/login`, `POST /auth/logout` | Регистрация, вход, выход |
+| `GET /me`, `PATCH /me`, `DELETE /me` | Профиль; регион и каналы уведомлений; удаление с паролем |
+| `GET /regions` | Список регионов |
+| `GET /games/search?q=`, `GET /wishlist`, `POST /wishlist` | Поиск и вишлист |
 
 ## Разработка
 

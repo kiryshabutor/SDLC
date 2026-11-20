@@ -35,7 +35,7 @@ func (m *memStore) InWishlist(_ context.Context, _ int64, ids []domain.AppID) (m
 	return out, nil
 }
 func (m *memStore) AddToWishlist(_ context.Context, _ int64, r domain.Region, g domain.Game, p domain.Price, now time.Time) (domain.WishlistItem, error) {
-	it := domain.WishlistItem{Game: g, Region: r, Condition: domain.ConditionAny, Price: p, AddedAt: now, CheckedAt: now}
+	it := domain.WishlistItem{Game: g, Region: r, Condition: domain.ConditionAny, Price: &p, AddedAt: now, CheckedAt: &now}
 	m.items[g.AppID] = it
 	return it, nil
 }

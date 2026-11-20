@@ -21,7 +21,6 @@ type Config struct {
 	SteamBaseURL  string
 	TestMode      bool
 	LogLevel      string
-	DevUserEmail  string
 	APISteamQuota int
 }
 
@@ -32,7 +31,6 @@ func LoadConfig() (Config, error) {
 		HTTPAddr:      env("HTTP_ADDR", ":8080"),
 		SteamBaseURL:  env("STEAM_STORE_URL", "https://store.steampowered.com"),
 		LogLevel:      env("LOG_LEVEL", "info"),
-		DevUserEmail:  env("DEV_USER_EMAIL", "demo@example.com"),
 		APISteamQuota: 30,
 	}
 	if c.DatabaseURL == "" {

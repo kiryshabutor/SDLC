@@ -50,17 +50,24 @@ type GameHit struct {
 // только значение по умолчанию; проверка условий появится в F-07 и F-09.
 type Condition string
 
-// ConditionAny — условие по умолчанию «любая скидка».
-const ConditionAny Condition = "any"
+// Типы условий (столбец wishlist_items.cond_type).
+const (
+	ConditionAny     Condition = "any"      // любая скидка, по умолчанию
+	ConditionMinPct  Condition = "min_pct"  // скидка не менее N %
+	ConditionBelow   Condition = "below"    // цена не выше X; сбрасывается при смене региона
+	ConditionHistLow Condition = "hist_low" // исторический минимум
+)
 
-// WishlistItem — элемент вишлиста вместе с текущей ценой пары.
+// WishlistItem — элемент вишлиста вместе с текущей ценой пары. Price и
+// CheckedAt равны nil, пока пара (игра, регион) ещё не опрашивалась: так
+// бывает сразу после смены региона (REQ-FUNC-005) до ближайшего цикла.
 type WishlistItem struct {
 	Game
-	Region    Region    `json:"region"`
-	Condition Condition `json:"condition"`
-	Price     Price     `json:"price"`
-	CheckedAt time.Time `json:"checked_at"`
-	AddedAt   time.Time `json:"added_at"`
+	Region    Region     `json:"region"`
+	Condition Condition  `json:"condition"`
+	Price     *Price     `json:"price"`
+	CheckedAt *time.Time `json:"checked_at"`
+	AddedAt   time.Time  `json:"added_at"`
 }
 
 // MaxWishlistSize — лимит вишлиста одного пользователя (REQ-FUNC-011).

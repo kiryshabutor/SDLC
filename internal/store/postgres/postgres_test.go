@@ -27,23 +27,27 @@ func openTest(t *testing.T) *Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
-	if _, err := s.pool.Exec(ctx, `TRUNCATE wishlist_items, price_history, price_state, games, users, poll_cycles RESTART IDENTITY CASCADE`); err != nil {
+	if _, err := s.pool.Exec(ctx, `TRUNCATE sessions, login_failures, wishlist_items, price_history, price_state, games, users, poll_cycles RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)
 	}
 	return s
 }
 
-func TestAddToWishlistAndHistory(t *testing.T) {
-	s := openTest(t)
-	ctx := context.Background()
-	u1, err := s.EnsureUser(ctx, "a@example.com", domain.RegionBY)
+// newUser создаёт пользователя с фиктивным хэшем пароля.
+func newUser(t *testing.T, s *Store, email string, region domain.Region) int64 {
+	t.Helper()
+	id, err := s.CreateUser(context.Background(), email, "h", region, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again, _ := s.EnsureUser(ctx, "a@example.com", domain.RegionBY); again != u1 {
-		t.Fatalf("EnsureUser не идемпотентен: %d != %d", again, u1)
-	}
-	u2, _ := s.EnsureUser(ctx, "b@example.com", domain.RegionBY)
+	return id
+}
+
+func TestAddToWishlistAndHistory(t *testing.T) {
+	s := openTest(t)
+	ctx := context.Background()
+	u1 := newUser(t, s, "a@example.com", domain.RegionBY)
+	u2 := newUser(t, s, "b@example.com", domain.RegionBY)
 
 	g := domain.Game{AppID: 1245620, Name: "ELDEN RING"}
 	p := domain.Price{Availability: domain.Available, Final: 5999, Initial: 5999, Currency: "USD"}
@@ -68,7 +72,7 @@ func TestAddToWishlistAndHistory(t *testing.T) {
 		t.Fatalf("status: %v %d %v", exists, count, err)
 	}
 	items, err := s.Wishlist(ctx, u1)
-	if err != nil || len(items) != 1 || items[0].Price.Final != 5999 || items[0].Condition != domain.ConditionAny {
+	if err != nil || len(items) != 1 || items[0].Price == nil || items[0].Price.Final != 5999 || items[0].Condition != domain.ConditionAny {
 		t.Fatalf("items=%+v err=%v", items, err)
 	}
 	in, _ := s.InWishlist(ctx, u1, []domain.AppID{1245620, 570})
