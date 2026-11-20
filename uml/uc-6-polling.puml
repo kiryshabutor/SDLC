@@ -1,0 +1,25 @@
+@startuml uc-6-polling
+' Модель прецедентов R1, диаграмма 6 из 7: опрос цен
+' Описания актёров и прецедентов: docs/use-case-model.md
+!include _style.iuml
+top to bottom direction
+skinparam packageStyle rectangle
+
+actor "Пользо-\nватель" as User
+actor "Разра-\nботчик" as Dev
+actor "Время" as Time <<таймер>>
+actor "Steam" as Steam <<система>>
+
+rectangle "Система" {
+  usecase "UC-10\nПроверить\nцены сейчас" as UC10
+  usecase "UC-16\nСымитировать\nцену" as UC16
+  usecase "UC-12\nВыполнить\nцикл опроса" as UC12
+}
+
+User --> UC10
+Dev --> UC16
+Time ---> UC12
+UC10 ..> UC12 : <<include>>
+UC16 ..> UC12 : <<include>>
+UC12 --> Steam
+@enduml

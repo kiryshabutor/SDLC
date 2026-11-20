@@ -1,0 +1,31 @@
+@startuml sd-01a-add-check
+' SD-01a. Добавление игры (UC-05): проверка запроса.
+' Участники — пакеты кода из DV-003.
+!include _style.iuml
+autonumber
+hide footbox
+
+participant "SPA" as C
+participant "httpapi" as H
+participant "app.\nWishlist" as W
+participant "domain" as D
+database "Postgre-\nSQL" as DB
+
+C -> H : POST
+H -> W : Add(ref)
+W -> D : ParseAppRef
+D --> W : appid
+alt не распознан
+  W --> H : ошибка
+  H --> C : 400
+else распознан
+  W -> DB : проверка
+  DB --> W : ответ
+  alt уже есть
+    W --> H : ошибка
+    H --> C : 409
+  else новая игра
+    W -> W : SD-01b
+  end
+end
+@enduml

@@ -1,0 +1,23 @@
+@startuml ad-02a-add-check
+' AD-02a. Добавление игры (UC-05): проверка запроса.
+' Реализовано в итерации 1 (F-05), internal/app/wishlist.go.
+!include _style.iuml
+
+start
+:Пользователь вводит\nссылку на игру\nили appid;
+:Разобрать ввод\n(ParseAppRef);
+switch (Проверка\nзапроса)
+case (не\nраспознан)
+  :400;
+  stop
+case (уже в\nвишлисте)
+  :409;
+  stop
+case (500\nигр)
+  :422;
+  stop
+case (корректен)
+endswitch
+:Получить игру\nи сохранить\n(AD-02b);
+stop
+@enduml

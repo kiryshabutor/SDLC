@@ -1,0 +1,19 @@
+@startuml uc-5-profile
+' Модель прецедентов R1, диаграмма 5 из 7: профиль
+' Описания актёров и прецедентов: docs/use-case-model.md
+!include _style.iuml
+top to bottom direction
+skinparam packageStyle rectangle
+
+actor "Пользо-\nватель" as User
+actor "Telegram" as TG <<система>>
+
+rectangle "Система" {
+  usecase "UC-15\nИзменить настройки\nили удалить аккаунт" as UC15
+  usecase "UC-11\nПривязать\nTelegram" as UC11
+}
+
+User --> UC15
+User --> UC11
+UC11 --> TG
+@enduml

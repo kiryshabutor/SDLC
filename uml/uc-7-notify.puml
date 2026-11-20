@@ -1,0 +1,24 @@
+@startuml uc-7-notify
+' Модель прецедентов R1, диаграмма 7 из 7: уведомления
+' Описания актёров и прецедентов: docs/use-case-model.md
+!include _style.iuml
+top to bottom direction
+skinparam packageStyle rectangle
+
+actor "Пользо-\nватель" as User
+actor "Канал\nдоставки" as Channel <<система>>
+actor "Почтовый\nсервер" as Mail <<система>>
+actor "Telegram" as TG <<система>>
+
+rectangle "Система" {
+  usecase "UC-12\nВыполнить\nцикл опроса" as UC12
+  usecase "UC-13\nУведомить\nо скидке" as UC13
+  usecase "UC-14\nПросмотреть\nуведомления" as UC14
+}
+
+User --> UC14
+UC12 ..> UC13 : <<include>>
+UC13 --> Channel
+Mail -|> Channel
+Channel <|- TG
+@enduml

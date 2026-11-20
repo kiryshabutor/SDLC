@@ -1,0 +1,25 @@
+@startuml sd-01b-add-save
+' SD-01b. Добавление игры (UC-05): Steam и сохранение.
+' Продолжение SD-01a.
+!include _style.iuml
+autonumber
+hide footbox
+
+participant "app.\nWishlist" as W
+participant "source/\nsteam" as S
+participant "Steam\nStore API" as ST
+database "Postgre-\nSQL" as DB
+participant "httpapi" as H
+
+W -> S : Details\n(регион,\nappid)
+S -> ST : GET\nappdetails
+ST --> S : JSON
+alt success = false
+  S --> W : ErrGame\nNotFound
+  W --> H : 404
+else игра найдена
+  S --> W : Game,\nPrice
+  W -> DB : транзакция:\ngames, цена,\nистория,\nвишлист
+  W --> H : 201
+end
+@enduml
