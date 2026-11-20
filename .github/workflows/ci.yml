@@ -39,11 +39,33 @@ jobs:
           go test -coverprofile=domain.out ./internal/domain/
           go tool cover -func=domain.out | awk '/^total:/ { sub("%", "", $3); print "domain coverage: " $3 "%"; exit ($3 < 70) }'
 
+  web:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - name: eslint
+        run: npx eslint --max-warnings 0 .
+      - name: vitest
+        run: npm test
+      - name: build
+        run: npm run build
+
   docker:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: build image
         run: docker build --build-arg VERSION=${GITHUB_SHA::7} -t steam-deal-hunter:ci .
+      - name: build web image
+        run: docker build -t steam-deal-hunter-web:ci web
       - name: compose config
         run: cp .env.example .env && docker compose config -q

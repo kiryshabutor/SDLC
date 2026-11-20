@@ -1,5 +1,5 @@
 # Развёртывание на одном сервере (ADR-0008, DV-014): docker compose up -d
-# Caddy и веб-клиент подключаются в итерации 3 вместе с интерфейсом (F-06).
+# Демонстрация с тестовым почтовым ящиком: docker compose --profile test up -d
 name: steam-deal-hunter
 
 x-app: &app
@@ -16,11 +16,35 @@ services:
       context: .
       args:
         VERSION: ${VERSION:-dev}
+    # Снаружи API доступен через Caddy; порт на 127.0.0.1 — для диагностики.
     ports:
-      - "${API_PORT:-8080}:8080"
+      - "127.0.0.1:${API_PORT:-8080}:8080"
     depends_on:
       db:
         condition: service_healthy
+
+  caddy:
+    image: steam-deal-hunter-web:${VERSION:-dev}
+    build:
+      context: ./web
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      - api
+
+  # Тестовый почтовый ящик: SMTP :1025, веб-интерфейс http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:v1.21
+    profiles: [test]
+    ports:
+      - "127.0.0.1:8025:8025"
 
   worker:
     <<: *app
@@ -67,3 +91,4 @@ services:
 volumes:
   pgdata:
   backups:
+  caddy_data:

@@ -24,4 +24,16 @@ var (
 	ErrWrongPassword       = errors.New("wrong current password")
 	ErrRegionResetRequired = errors.New("region change resets price conditions")
 	ErrUserNotFound        = errors.New("user not found")
+
+	// Подтверждение email, сброс пароля, Telegram (F-03, F-22).
+	ErrTokenInvalid     = errors.New("token expired, used or unknown")
+	ErrTooManyRequests  = errors.New("too many requests")
+	ErrAlreadyVerified  = errors.New("email already verified")
+	ErrTelegramDisabled = errors.New("telegram bot is not configured")
+
+	// Вишлист и условия (F-06, F-07).
+	ErrNotInWishlist         = errors.New("game not in wishlist")
+	ErrInvalidCondition      = errors.New("unknown condition type")
+	ErrInvalidConditionValue = errors.New("invalid condition value")
+	ErrInvalidSort           = errors.New("unknown sort or filter")
 )

@@ -13,17 +13,27 @@ import (
 
 // Учётные записи и сессии (F-02, F-04, F-17; DV-004, ADR-0005).
 
-// CreateUser создаёт пользователя. Занятый email даёт domain.ErrEmailTaken.
-func (s *Store) CreateUser(ctx context.Context, email, passwordHash string, region domain.Region, consentAt time.Time) (int64, error) {
+// CreateUser создаёт пользователя. Если задан tok, в той же транзакции
+// сохраняются токен подтверждения и письмо в outbox (DV-008): регистрация не
+// зависит от доступности SMTP, а письмо не теряется. Занятый email даёт
+// domain.ErrEmailTaken.
+func (s *Store) CreateUser(ctx context.Context, email, passwordHash string, region domain.Region, now time.Time,
+	tok *domain.TokenSpec, msg *domain.Message) (int64, error) {
 	var id int64
-	err := s.pool.QueryRow(ctx, `
-		INSERT INTO users (email, password_hash, region_code, pd_consent_at, created_at)
-		VALUES ($1, $2, $3, $4, $4) RETURNING id`,
-		email, passwordHash, string(region), consentAt).Scan(&id)
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return 0, domain.ErrEmailTaken
-	}
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		err := tx.QueryRow(ctx, `
+			INSERT INTO users (email, password_hash, region_code, pd_consent_at, created_at)
+			VALUES ($1, $2, $3, $4, $4) RETURNING id`,
+			email, passwordHash, string(region), now).Scan(&id)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return domain.ErrEmailTaken
+		}
+		if err != nil {
+			return err
+		}
+		return issueToken(ctx, tx, id, tok, msg, now)
+	})
 	return id, err
 }
 

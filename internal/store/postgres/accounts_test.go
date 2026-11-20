@@ -13,12 +13,12 @@ func TestUsersAndCredentials(t *testing.T) {
 	s := openTest(t)
 	ctx := context.Background()
 	t0 := time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
-	id, err := s.CreateUser(ctx, "kirill@example.com", "$argon2id$x", domain.RegionBY, t0)
+	id, err := s.CreateUser(ctx, "kirill@example.com", "$argon2id$x", domain.RegionBY, t0, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// citext: email уникален без учёта регистра.
-	if _, err := s.CreateUser(ctx, "KIRILL@example.com", "h", domain.RegionBY, t0); !errors.Is(err, domain.ErrEmailTaken) {
+	if _, err := s.CreateUser(ctx, "KIRILL@example.com", "h", domain.RegionBY, t0, nil, nil); !errors.Is(err, domain.ErrEmailTaken) {
 		t.Fatalf("дубликат: %v", err)
 	}
 	gotID, hash, err := s.Credentials(ctx, "kirill@example.com")

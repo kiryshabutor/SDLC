@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -22,6 +23,20 @@ type Config struct {
 	TestMode      bool
 	LogLevel      string
 	APISteamQuota int
+
+	// AppBaseURL — внешний адрес веб-клиента для ссылок в письмах.
+	AppBaseURL string
+	// SMTP (REQ-INT-010). Пустой SMTPHost — письма копятся в outbox.
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUser     string
+	SMTPPassword string
+	SMTPFrom     string
+	SMTPTLS      string
+	// Telegram (REQ-INT-012). Пустой токен — функции Telegram выключены.
+	TelegramToken  string
+	TelegramBot    string
+	TelegramAPIURL string
 }
 
 // LoadConfig читает окружение и проверяет значения.
@@ -32,6 +47,16 @@ func LoadConfig() (Config, error) {
 		SteamBaseURL:  env("STEAM_STORE_URL", "https://store.steampowered.com"),
 		LogLevel:      env("LOG_LEVEL", "info"),
 		APISteamQuota: 30,
+
+		AppBaseURL:     env("APP_BASE_URL", "http://localhost:8080"),
+		SMTPHost:       os.Getenv("SMTP_HOST"),
+		SMTPUser:       os.Getenv("SMTP_USER"),
+		SMTPPassword:   os.Getenv("SMTP_PASSWORD"),
+		SMTPFrom:       env("SMTP_FROM", "Охотник за скидками <noreply@localhost>"),
+		SMTPTLS:        env("SMTP_TLS", "starttls"),
+		TelegramToken:  os.Getenv("TELEGRAM_BOT_TOKEN"),
+		TelegramBot:    strings.TrimPrefix(os.Getenv("TELEGRAM_BOT_NAME"), "@"),
+		TelegramAPIURL: env("TELEGRAM_API_URL", "https://api.telegram.org"),
 	}
 	if c.DatabaseURL == "" {
 		return c, fmt.Errorf("DATABASE_URL is required")
@@ -50,6 +75,12 @@ func LoadConfig() (Config, error) {
 		if c.APISteamQuota, err = strconv.Atoi(v); err != nil || c.APISteamQuota <= 0 {
 			return c, fmt.Errorf("API_STEAM_QUOTA must be a positive integer")
 		}
+	}
+	if c.SMTPPort, err = strconv.Atoi(env("SMTP_PORT", "587")); err != nil || c.SMTPPort <= 0 {
+		return c, fmt.Errorf("SMTP_PORT must be a positive integer")
+	}
+	if (c.TelegramToken == "") != (c.TelegramBot == "") {
+		return c, fmt.Errorf("TELEGRAM_BOT_TOKEN and TELEGRAM_BOT_NAME must be set together")
 	}
 	return c, nil
 }

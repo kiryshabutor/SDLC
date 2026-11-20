@@ -99,7 +99,8 @@ func (s *Store) InWishlist(ctx context.Context, userID int64, appIDs []domain.Ap
 // AddToWishlist в одной транзакции сохраняет игру, текущую цену пары,
 // точку истории (если цена новая или изменилась, ADR-0004) и элемент вишлиста.
 func (s *Store) AddToWishlist(ctx context.Context, userID int64, region domain.Region, g domain.Game, p domain.Price, now time.Time) (domain.WishlistItem, error) {
-	item := domain.WishlistItem{Game: g, Region: region, Condition: domain.ConditionAny, Price: &p, CheckedAt: &now, AddedAt: now}
+	item := domain.WishlistItem{Game: g, Region: region, Condition: domain.ItemCondition{Type: domain.ConditionAny},
+		Price: &p, CheckedAt: &now, AddedAt: now}
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO games (appid, name, cover_url) VALUES ($1, $2, $3)
@@ -178,13 +179,14 @@ func nullStr(s string) any {
 	return s
 }
 
-// Wishlist возвращает вишлист пользователя с ценами в его регионе, новые сверху.
-// Если пара ещё не опрашивалась в текущем регионе, цена равна nil.
+// Wishlist возвращает вишлист пользователя с ценами и историческим минимумом
+// в его регионе, новые сверху (REQ-FUNC-012). Если пара ещё не опрашивалась
+// в текущем регионе, цена равна nil.
 func (s *Store) Wishlist(ctx context.Context, userID int64) ([]domain.WishlistItem, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT g.appid, g.name, g.cover_url, u.region_code, w.cond_type, w.added_at,
+		SELECT g.appid, g.name, g.cover_url, u.region_code, w.cond_type, coalesce(w.cond_value, 0)::int, w.added_at,
 		       ps.availability, coalesce(ps.final_price, 0), coalesce(ps.initial_price, 0),
-		       coalesce(ps.discount_pct, 0), coalesce(ps.currency, ''), ps.checked_at
+		       coalesce(ps.discount_pct, 0), coalesce(ps.currency, ''), ps.checked_at, ps.hist_low_price
 		FROM wishlist_items w
 		JOIN users u ON u.id = w.user_id
 		JOIN games g ON g.appid = w.appid
@@ -202,14 +204,15 @@ func (s *Store) Wishlist(ctx context.Context, userID int64) ([]domain.WishlistIt
 		var app int
 		var region, cond string
 		var avail *string
-		if err := rows.Scan(&app, &it.Name, &it.CoverURL, &region, &cond, &it.AddedAt, &avail,
-			&p.Final, &p.Initial, &p.DiscountPct, &p.Currency, &it.CheckedAt); err != nil {
+		if err := rows.Scan(&app, &it.Name, &it.CoverURL, &region, &cond, &it.Condition.Value, &it.AddedAt, &avail,
+			&p.Final, &p.Initial, &p.DiscountPct, &p.Currency, &it.CheckedAt, &it.HistLow); err != nil {
 			return nil, err
 		}
-		it.AppID, it.Region, it.Condition = domain.AppID(app), domain.Region(region), domain.Condition(cond)
+		it.AppID, it.Region, it.Condition.Type = domain.AppID(app), domain.Region(region), domain.Condition(cond)
 		if avail != nil {
 			p.Availability = domain.Availability(*avail)
 			it.Price = &p
+			it.AtHistLow = domain.AtHistLow(p, it.HistLow)
 		}
 		out = append(out, it)
 	}
