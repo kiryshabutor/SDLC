@@ -2,8 +2,11 @@
 ' Модель прецедентов R1, диаграмма 3 из 7: история ITAD
 ' Описания актёров и прецедентов: docs/use-case-model.md
 !include _style.iuml
-top to bottom direction
+mainframe **uc** Прецеденты (3/7): История ITAD
+left to right direction
 skinparam packageStyle rectangle
+skinparam nodesep 60
+skinparam ranksep 60
 
 actor "Пользо-\nватель" as User
 actor "Steam" as Steam <<система>>
@@ -15,7 +18,7 @@ rectangle "Система" {
 }
 
 User --> UC05
-UC05 <.. UC17 : <<extend>>\n[регион\nUS или PL]
+UC05 <.[norank]. UC17 : <<extend>>\n[регион\nUS или PL]
 UC05 --> Steam
 UC17 --> ITAD
 @enduml

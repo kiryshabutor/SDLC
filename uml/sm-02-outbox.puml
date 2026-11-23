@@ -2,16 +2,24 @@
 ' SM-02. Запись outbox: письмо или сообщение Telegram.
 ' Уточняет DV-013, ADR-0007, ADR-0009.
 !include _style.iuml
+mainframe **state machine** SM-02 Запись outbox
+skinparam nodesep 68
+skinparam ranksep 110
 hide empty description
+state "<b>Ожидает</b>" as Wait
+state "<b>Отправляется</b>" as Send
+state "<b>Отправлена</b>" as Sent
+state "<b>Ошибка</b>" as Failed
+state "<b>Отменена</b>" as Cancel
 
-[*] --> Ожидает : создана\n/ attempts := 0
-Ожидает --> Отправляется : тик 10 с\n[срок попытки\nнаступил]
-Отправляется --> Отправлена : успех
-Отправляется --> Ожидает : ошибка\n[attempts < 3]\n/ +5 мин
-Отправляется --> Ошибка : ошибка\n[attempts = 3]
-Отправляется --> Отменена : 403\nTelegram
-Ожидает --> Отменена : канал\nотключён
-Отправлена --> [*]
-Ошибка --> [*]
-Отменена --> [*]
+[*] -down-> Wait : создана\n/ attempts := 0
+Wait -down-> Send : тик 10 с\n[срок наступил]
+Send -up-> Wait : ошибка\n[attempts < 3]\n/ +5 мин
+Wait -right-> Cancel : канал\nотключён
+Send -right-> Cancel : 403\nTelegram
+Send -down-> Failed : ошибка\n[attempts = 3]
+Send -left-> Sent : успех
+Sent -down-> [*]
+Failed -down-> [*]
+Cancel -down-> [*]
 @enduml

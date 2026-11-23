@@ -1,22 +1,42 @@
 @startuml sd-02a-cycle
 ' SD-02a. Скидка найдена в цикле опроса (UC-12, UC-13).
-' Доставка дайджеста показана в SD-02b.
+' Доставка дайджеста показана в SD-02b. REQ-PERF-004.
+!pragma teoz true
 !include _style.iuml
-autonumber
+mainframe **sd** SD-02a Скидка в цикле опроса
 hide footbox
 
-participant "Обработ-\nчик" as T
-participant "Price-\nSource" as S
-participant "domain.\nEvaluate" as E
-database "Postgre-\nSQL" as DB
+participant ":worker" as T
+participant ":Price-\nSource" as S
+participant ":domain" as E
+participant ":Store" as DB
 
-T -> DB : advisory\nlock(42)
-T -> S : Prices(BY,\nпакет)
-S --> T : 2399 / 3999,\n−40 %
-T -> DB : price_state,\nprice_history
-T -> E : Evaluate
-E --> T : уведомление
-T -> DB : notifications,\nlast_notified
+{t0} [-> T : тик POLL_\nINTERVAL
+activate T
+T -> DB : lock(42)
+create ":Cycle" as C
+T -->> C : <<create>>
+loop пакеты пар
+  T -> S : Prices()
+  activate S
+  S -->> T : цены
+  deactivate S
+  T -> E : Evaluate()
+  activate E
+  E -->> T : уведом-\nления
+  deactivate E
+  T -> DB : цены,\nуведомления
+  T -> C : учесть
+end
 T -> DB : дайджесты\nв outbox
+T -> C : итог()
+activate C
+C -> DB : статис-\nтика
+C -->> T : ok
+destroy C
 T -> DB : unlock(42)
+{t1} [<<-- T
+deactivate T
+{t0} <-> {t1} : {≤1 ч}
+ref over T, DB : SD-02b Доставка
 @enduml

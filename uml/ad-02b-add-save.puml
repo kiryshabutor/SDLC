@@ -2,23 +2,23 @@
 ' AD-02b. Добавление игры (UC-05): Steam и сохранение.
 ' Реализовано в итерации 1 (F-05), internal/app/wishlist.go.
 !include _style.iuml
+mainframe **activity** AD-02b Добавление игры: сохранение
 
 start
 :Запросить\nappdetails;
-switch (Ответ\nSteam)
-case (ошибка)
-  :503;
+if () then ([ошибка\nSteam])
+  :Ответ\n503;
   stop
-case (не найдена)
-  :404;
+elseif () then ([игра не\nнайдена])
+  :Ответ\n404;
   stop
-case (найдена)
-endswitch
-:Транзакция: игра,\nцена, история,\nэлемент вишлиста;
-if (Регион\nUS или PL?) then (да)
-  :Задание\nITAD (UC-17);
-else (нет)
+else ([найдена])
 endif
-:201;
+:Транзакция: игра,\nцена, история,\nэлемент вишлиста;
+if () then ([регион\nUS или PL])
+  :Поставить задание ITAD\n(UC-17);
+else ([иначе])
+endif
+:Ответ 201;
 stop
 @enduml

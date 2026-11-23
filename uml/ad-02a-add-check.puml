@@ -2,22 +2,22 @@
 ' AD-02a. Добавление игры (UC-05): проверка запроса.
 ' Реализовано в итерации 1 (F-05), internal/app/wishlist.go.
 !include _style.iuml
+mainframe **activity** AD-02a Добавление игры: проверка
 
 start
-:Пользователь вводит\nссылку на игру\nили appid;
+:Ввести ссылку\nна игру или appid;
 :Разобрать ввод\n(ParseAppRef);
-switch (Проверка\nзапроса)
-case (не\nраспознан)
-  :400;
+if () then ([не\nраспознан])
+  :Ответ\n400;
   stop
-case (уже в\nвишлисте)
-  :409;
+elseif () then ([уже в\nвишлисте])
+  :Ответ\n409;
   stop
-case (500\nигр)
-  :422;
+elseif () then ([500\nигр])
+  :Ответ\n422;
   stop
-case (корректен)
-endswitch
+else ([иначе])
+endif
 :Получить игру\nи сохранить\n(AD-02b);
 stop
 @enduml

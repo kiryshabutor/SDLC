@@ -2,8 +2,11 @@
 ' Модель прецедентов R1, диаграмма 1 из 7: учётная запись
 ' Описания актёров и прецедентов: docs/use-case-model.md
 !include _style.iuml
-top to bottom direction
+mainframe **uc** Прецеденты (1/7): Учётная запись
+left to right direction
 skinparam packageStyle rectangle
+skinparam nodesep 60
+skinparam ranksep 40
 
 actor "Гость" as Guest
 actor "Почтовый\nсервер" as Mail <<система>>
@@ -16,7 +19,7 @@ rectangle "Система" {
 
 Guest --> UC01
 Guest --> UC02
-UC02 <.. UC03 : <<extend>>
-UC01 ---> Mail
+UC02 <.[norank]. UC03 : <<extend>>
+UC01 --> Mail
 UC03 --> Mail
 @enduml

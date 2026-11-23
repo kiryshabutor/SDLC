@@ -1,18 +1,23 @@
 @startuml sm-01b-tracked
 ' SM-01b. Вложенные состояния «Отслеживается»: защита
 ' от повторных уведомлений (REQ-FUNC-026, DV-010).
+' Рамка диаграммы обозначает составное состояние SM-01a.
 !include _style.iuml
+mainframe **state machine** SM-01b Отслеживается
+skinparam nodesep 80
+skinparam ranksep 130
 hide empty description
 
-state Отслеживается {
-  [*] --> Ожидание
-  Ожидание --> Уведомлено : [условие\nвыполнено]\n/ уведомить
-  Уведомлено --> Ожидание : [условие не\nвыполнено]
-  Уведомлено --> Уведомлено : [новая цена,\nусловие\nвыполнено]\n/ уведомить
-  Ожидание : entry / last_notified\n_price := NULL
-  Уведомлено : entry / last_notified\n_price := цена
-}
-note bottom of Отслеживается
+state "<b>Ожидание</b>" as Idle
+state "<b>Уведомлено</b>" as Notified
+Idle : entry / last_notified_price := NULL
+Notified : entry / last_notified_price := цена
+
+[*] -down-> Idle
+Idle <-down- Notified : [условие не\nвыполнено]
+Idle -down-> Notified : [условие\nвыполнено]\n/ уведомить
+Notified -down-> Notified : [новая цена,\nусловие\nвыполнено]\n/ уведомить
+note bottom of Notified
   Все переходы происходят
   по событию «цена получена».
   Та же цена ничего не меняет.

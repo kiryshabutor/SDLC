@@ -2,10 +2,12 @@
 ' Модель прецедентов R1, диаграмма 7 из 7: уведомления
 ' Описания актёров и прецедентов: docs/use-case-model.md
 !include _style.iuml
+mainframe **uc** Прецеденты (7/7): Уведомления
 top to bottom direction
 skinparam packageStyle rectangle
 
 actor "Пользо-\nватель" as User
+actor "Время" as Time <<таймер>>
 actor "Канал\nдоставки" as Channel <<система>>
 actor "Почтовый\nсервер" as Mail <<система>>
 actor "Telegram" as TG <<система>>
@@ -17,6 +19,7 @@ rectangle "Система" {
 }
 
 User --> UC14
+Time --> UC12
 UC12 ..> UC13 : <<include>>
 UC13 --> Channel
 Mail -|> Channel
