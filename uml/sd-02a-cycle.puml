@@ -1,0 +1,42 @@
+@startuml sd-02a-cycle
+' SD-02a. Скидка найдена в цикле опроса (UC-12, UC-13).
+' Доставка дайджеста показана в SD-02b. REQ-PERF-004.
+!pragma teoz true
+!include _style.iuml
+mainframe **sd** SD-02a Скидка в цикле опроса
+hide footbox
+
+participant ":worker" as T
+participant ":Price-\nSource" as S
+participant ":domain" as E
+participant ":Store" as DB
+
+{t0} [-> T : тик POLL_\nINTERVAL
+activate T
+T -> DB : lock(42)
+create ":Cycle" as C
+T -->> C : <<create>>
+loop пакеты пар
+  T -> S : Prices()
+  activate S
+  S -->> T : цены
+  deactivate S
+  T -> E : Evaluate()
+  activate E
+  E -->> T : уведом-\nления
+  deactivate E
+  T -> DB : цены,\nуведомления
+  T -> C : учесть
+end
+T -> DB : дайджесты\nв outbox
+T -> C : итог()
+activate C
+C -> DB : статис-\nтика
+C -->> T : ok
+destroy C
+T -> DB : unlock(42)
+{t1} [<<-- T
+deactivate T
+{t0} <-> {t1} : {≤1 ч}
+ref over T, DB : SD-02b Доставка
+@enduml

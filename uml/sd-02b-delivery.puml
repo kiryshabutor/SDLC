@@ -1,0 +1,38 @@
+@startuml sd-02b-delivery
+' SD-02b. Доставка дайджеста из outbox (UC-13).
+' Продолжение SD-02a, internal/app/outbox.go.
+!pragma teoz true
+!include _style.iuml
+mainframe **sd** SD-02b Доставка дайджеста
+hide footbox
+
+participant ":Outbox" as O
+participant ":Store" as DB
+boundary "SMTP" as M
+boundary "Tele-\ngram" as TG
+actor "Пользо-\nватель" as U
+
+[-> O : тик 10 с
+activate O
+O -> DB : Claim\nOutbox()
+activate DB
+DB -->> O : записи
+deactivate DB
+loop каждая запись
+  alt email
+    O -> M : Send()
+    activate M
+    M ->> U : письмо
+    M -->> O : ok
+    deactivate M
+  else telegram
+    O -> TG : Send()
+    activate TG
+    TG ->> U : сооб-\nщение
+    TG -->> O : ok
+    deactivate TG
+  end
+  O -> DB : MarkSent()
+end
+deactivate O
+@enduml

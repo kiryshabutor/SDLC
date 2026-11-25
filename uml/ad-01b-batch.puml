@@ -1,0 +1,18 @@
+@startuml ad-01b-batch
+' AD-01b. Обработка одного пакета пар в цикле опроса.
+' Уточняет DV-007. Обработка пары вынесена в AD-01c.
+!include _style.iuml
+mainframe **activity** AD-01b Обработка пакета
+
+start
+:Запросить цены\nпакета до B appid\nв Steam (appdetails);
+if () then ([ошибка])
+  :Записать ошибку\nв статистику;
+  stop
+else ([ответ получен\nза 3 попытки])
+endif
+while () is ([есть пара])
+  :Обработать пару\n(AD-01c);
+endwhile ([пар нет])
+stop
+@enduml

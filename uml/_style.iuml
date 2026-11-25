@@ -1,0 +1,76 @@
+' Общий стиль диаграмм проекта (подключается через !include).
+' Строгая чёрно-белая нотация UML 2.5 по образцу uml-diagrams.org
+' (примеры из задания ЛР5), ADR-0010, правило 9.
+skinparam style strictuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam backgroundColor white
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 16
+skinparam defaultFontColor black
+skinparam ArrowColor black
+skinparam ArrowThickness 1
+skinparam linetype ortho
+skinparam conditionStyle diamond
+skinparam conditionEndStyle diamond
+
+skinparam ActorBorderColor black
+skinparam ActorBackgroundColor white
+skinparam UsecaseBorderColor black
+skinparam UsecaseBackgroundColor white
+skinparam RectangleBorderColor black
+skinparam RectangleBackgroundColor white
+skinparam PackageBorderColor black
+
+skinparam ActivityBorderColor black
+skinparam ActivityBackgroundColor white
+skinparam ActivityDiamondBorderColor black
+skinparam ActivityDiamondBackgroundColor white
+skinparam ActivityStartColor black
+skinparam ActivityEndColor black
+skinparam ActivityBarColor black
+skinparam SwimlaneBorderColor black
+
+skinparam StateBorderColor black
+skinparam StateBackgroundColor white
+skinparam StateStartColor black
+skinparam StateEndColor black
+skinparam StateFontStyle plain
+skinparam StateAttributeFontStyle plain
+
+skinparam ParticipantBorderColor black
+skinparam ParticipantBackgroundColor white
+skinparam BoundaryBorderColor black
+skinparam BoundaryBackgroundColor white
+skinparam SequenceLifeLineBorderColor black
+skinparam SequenceLifeLineBackgroundColor #E6E6E6
+skinparam SequenceGroupBorderColor black
+skinparam SequenceGroupBackgroundColor white
+skinparam SequenceReferenceBorderColor black
+skinparam SequenceReferenceBackgroundColor white
+skinparam SequenceReferenceHeaderBackgroundColor white
+skinparam SequenceMessageAlignment center
+
+skinparam NoteBackgroundColor white
+skinparam NoteBorderColor black
+
+' Все надписи одним кеглем 16: заглавная буква 17 px при 150 dpi;
+' при ширине рисунка 12 см диаграмма шире 820 px быть не должна.
+skinparam ArrowFontSize 16
+skinparam ActorStereotypeFontSize 16
+skinparam UsecaseStereotypeFontSize 16
+skinparam StereotypeFontSize 16
+skinparam SwimlaneTitleFontSize 16
+skinparam StateFontSize 16
+skinparam StateAttributeFontSize 16
+skinparam ParticipantFontSize 16
+skinparam ParticipantStereotypeFontSize 16
+skinparam SequenceGroupFontSize 16
+skinparam SequenceGroupHeaderFontSize 16
+skinparam SequenceReferenceFontSize 16
+skinparam NoteFontSize 16
+skinparam TitleFontSize 16
+skinparam RectangleFontSize 16
+skinparam ParticipantPadding 0
+skinparam BoxPadding 4
+skinparam ParticipantRoundCorner 0

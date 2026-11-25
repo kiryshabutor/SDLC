@@ -1,0 +1,22 @@
+@startuml uc-4-wishlist
+' Модель прецедентов R1, диаграмма 4 из 7: вишлист
+' Описания актёров и прецедентов: docs/use-case-model.md
+!include _style.iuml
+mainframe **uc** Прецеденты (4/7): Вишлист
+left to right direction
+skinparam packageStyle rectangle
+skinparam nodesep 60
+skinparam ranksep 60
+
+actor "Пользо-\nватель" as User
+
+rectangle "Система" {
+  usecase "UC-09\nПросмотреть\nстраницу игры" as UC09
+  usecase "UC-08\nПросмотреть\nвишлист" as UC08
+  usecase "UC-07\nЗадать условие\nуведомления" as UC07
+}
+
+User --> UC09
+User --> UC08
+UC08 <.[norank]. UC07 : <<extend>>
+@enduml

@@ -1,0 +1,39 @@
+@startuml sd-01b-add-save
+' SD-01b. Добавление игры (UC-05): Steam и сохранение.
+' Продолжение SD-01a, internal/app/wishlist.go.
+!pragma teoz true
+!include _style.iuml
+mainframe **sd** SD-01b Добавление игры: сохранение
+hide footbox
+
+participant ":Wishlist" as W
+participant ":steam" as S
+boundary "Steam\nAPI" as ST
+participant ":Store" as DB
+
+[-> W : Add(ref)\nиз SD-01a
+activate W
+W -> DB : UserRegion()
+activate DB
+DB -->> W : region
+deactivate DB
+W -> S : Details()
+activate S
+S -> ST : GET\nappdetails
+activate ST
+ST -->> S : JSON
+deactivate ST
+alt не найдена
+  S -->> W : ErrGame\nNotFound
+  [<<-- W : 404
+else найдена
+  S -->> W : game,\nprice
+  deactivate S
+  W -> DB : AddTo\nWishlist()
+  activate DB
+  DB -->> W : item
+  deactivate DB
+  [<<-- W : 201, item
+end
+deactivate W
+@enduml

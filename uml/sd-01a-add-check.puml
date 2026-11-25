@@ -1,0 +1,39 @@
+@startuml sd-01a-add-check
+' SD-01a. Добавление игры (UC-05): проверка запроса.
+' Участники: пакеты кода из DV-003, internal/app/wishlist.go.
+!pragma teoz true
+!include _style.iuml
+mainframe **sd** SD-01a Добавление игры: проверка
+hide footbox
+
+participant ":httpapi" as H
+participant ":Wishlist" as W
+participant ":domain" as D
+participant ":Store" as DB
+
+[-> H : POST
+activate H
+H -> W : Add(ref)
+activate W
+W -> D : Parse\nAppRef()
+activate D
+D -->> W : appid
+deactivate D
+alt не распознан
+  W -->> H : ошибка
+  [<<-- H : 400
+else распознан
+  W -> DB : Wishlist\nStatus()
+  activate DB
+  DB -->> W : exists,\ncount
+  deactivate DB
+  alt уже есть
+    W -->> H : ошибка
+    [<<-- H : 409
+  else новая игра
+    ref over W, DB : SD-01b Сохранение
+  end
+end
+deactivate W
+deactivate H
+@enduml

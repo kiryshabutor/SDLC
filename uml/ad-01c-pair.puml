@@ -1,0 +1,19 @@
+@startuml ad-01c-pair
+' AD-01c. Обработка одной пары (игра, регион) в транзакции.
+' Уточняет DV-010 и SM-01b.
+!include _style.iuml
+mainframe **activity** AD-01c Обработка пары
+
+start
+:Обновить\nprice_state;
+if () then ([цена\nизменилась])
+  :Записать price_history,\nпересчитать минимум;
+else ([иначе])
+endif
+if () then ([условие\nвыполнено])
+  :Создать уведомление\n(SM-01b);
+else ([иначе])
+endif
+:Зафиксировать\nтранзакцию;
+stop
+@enduml
